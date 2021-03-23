@@ -12,7 +12,5 @@ Sparrow is licensed under the Apache 2 software licence.
 
 [craigraw](https://github.com/craigraw) seems to be original developer behind this [project](https://github.com/sparrowwallet/sparrow).
 
-![Yourkit](https://www.yourkit.com/images/yklogo.png)
-
 Sparrow Wallet uses the [Yourkit Java Profiler](https://www.yourkit.com/java/profiler/) to profile and improve performance. 
 YourKit supports open source projects with useful tools for monitoring and profiling Java and .NET applications.
