@@ -7,6 +7,7 @@ import com.sparrowwallet.drongo.crypto.*;
 import com.sparrowwallet.drongo.policy.Policy;
 import com.sparrowwallet.drongo.policy.PolicyType;
 import com.sparrowwallet.drongo.protocol.ScriptType;
+import com.sparrowwallet.drongo.policy.SortedMulti;
 import com.sparrowwallet.drongo.wallet.Keystore;
 import com.sparrowwallet.drongo.wallet.KeystoreSource;
 import com.sparrowwallet.drongo.wallet.Wallet;
@@ -59,6 +60,9 @@ public class SettingsController extends WalletFormController implements Initiali
 
     @FXML
     private CopyableLabel multisigHighLabel;
+
+    @FXML
+    private ComboBox<SortedMulti> sortedMulti;
 
     @FXML
     private StackPane keystoreTabsPane;
@@ -133,6 +137,14 @@ public class SettingsController extends WalletFormController implements Initiali
 
         multisigControl.lowValueProperty().addListener((observable, oldValue, threshold) -> {
             EventManager.get().post(new SettingsChangedEvent(walletForm.getWallet(), SettingsChangedEvent.Type.MUTLISIG_THRESHOLD));
+        });
+
+        sortedMulti.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, sortedMulti) -> {
+            if (sortedMulti != null) {
+                walletForm.getWallet().setSortedMulti(sortedMulti);
+            }
+        
+//            EventManager.get().post(new SettingsChangedEvent(walletForm.getWallet(), SettingsChangedEvent.Type.SCRIPT_TYPE));
         });
 
         multisigFieldset.managedProperty().bind(multisigFieldset.visibleProperty());
@@ -221,6 +233,10 @@ public class SettingsController extends WalletFormController implements Initiali
 
         if(wallet.getScriptType() != null) {
             scriptType.getSelectionModel().select(walletForm.getWallet().getScriptType());
+        }
+        
+        if(wallet.getSortedMulti() != null) {
+            sortedMulti.getSelectionModel().select(walletForm.getWallet().getSortedMulti());
         }
 
         export.setDisable(!walletForm.getWallet().isValid());
@@ -340,7 +356,7 @@ public class SettingsController extends WalletFormController implements Initiali
             if(wallet.getPolicyType() == PolicyType.SINGLE) {
                 wallet.setDefaultPolicy(Policy.getPolicy(wallet.getPolicyType(), wallet.getScriptType(), wallet.getKeystores(), 1));
             } else if(wallet.getPolicyType() == PolicyType.MULTI) {
-                wallet.setDefaultPolicy(Policy.getPolicy(wallet.getPolicyType(), wallet.getScriptType(), wallet.getKeystores(), (int)multisigControl.getLowValue()));
+                wallet.setDefaultPolicy(Policy.getPolicy(wallet.getPolicyType(), wallet.getScriptType(), wallet.getKeystores(), (int)multisigControl.getLowValue(), wallet.getSortedMulti()));
             }
 
             if(ScriptType.getAddressableScriptTypes(wallet.getPolicyType()).contains(wallet.getScriptType())) {
