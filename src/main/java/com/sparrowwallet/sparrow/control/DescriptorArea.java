@@ -3,6 +3,7 @@ package com.sparrowwallet.sparrow.control;
 import com.sparrowwallet.drongo.OutputDescriptor;
 import com.sparrowwallet.drongo.policy.PolicyType;
 import com.sparrowwallet.drongo.protocol.ScriptType;
+import com.sparrowwallet.drongo.policy.SortedMulti;
 import com.sparrowwallet.drongo.wallet.Keystore;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import javafx.scene.control.ContextMenu;
@@ -16,6 +17,7 @@ import java.util.List;
 import static com.sparrowwallet.drongo.policy.PolicyType.MULTI;
 import static com.sparrowwallet.drongo.policy.PolicyType.SINGLE;
 import static com.sparrowwallet.drongo.protocol.ScriptType.MULTISIG;
+import static com.sparrowwallet.drongo.policy.SortedMulti.SORTED;
 
 public class DescriptorArea extends CodeArea {
     private Wallet wallet;
@@ -29,6 +31,7 @@ public class DescriptorArea extends CodeArea {
 
         PolicyType policyType = wallet.getPolicyType();
         ScriptType scriptType = wallet.getScriptType();
+        SortedMulti sortedMulti = wallet.getSortedMulti();
         List<Keystore> keystores = wallet.getKeystores();
         int threshold = wallet.getDefaultPolicy().getNumSignaturesRequired();
 
@@ -40,7 +43,7 @@ public class DescriptorArea extends CodeArea {
 
         if(MULTI.equals(policyType)) {
             append(scriptType.getDescriptor(), "descriptor-text");
-            append(MULTISIG.getDescriptor(), "descriptor-text");
+            append(MULTISIG.getDescriptor(SORTED.equals(sortedMulti)), "descriptor-text");
             append(Integer.toString(threshold), "descriptor-text");
 
             for(Keystore keystore : keystores) {
@@ -48,7 +51,7 @@ public class DescriptorArea extends CodeArea {
                 replace(getLength(), getLength(), keystore.getScriptName(), List.of(keystore.isValid() ? "descriptor-text" : "descriptor-error", keystore.getScriptName()));
             }
 
-            append(MULTISIG.getCloseDescriptor(), "descriptor-text");
+            append(MULTISIG.getCloseDescriptor(SORTED.equals(sortedMulti)), "descriptor-text");
             append(scriptType.getCloseDescriptor(), "descriptor-text");
         }
     }

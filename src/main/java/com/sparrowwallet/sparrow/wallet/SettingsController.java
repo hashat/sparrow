@@ -144,7 +144,7 @@ public class SettingsController extends WalletFormController implements Initiali
                 walletForm.getWallet().setSortedMulti(sortedMulti);
             }
         
-//            EventManager.get().post(new SettingsChangedEvent(walletForm.getWallet(), SettingsChangedEvent.Type.SCRIPT_TYPE));
+            EventManager.get().post(new SettingsChangedEvent(walletForm.getWallet(), SettingsChangedEvent.Type.MULTI_SORTED));
         });
 
         multisigFieldset.managedProperty().bind(multisigFieldset.visibleProperty());
@@ -356,7 +356,7 @@ public class SettingsController extends WalletFormController implements Initiali
             if(wallet.getPolicyType() == PolicyType.SINGLE) {
                 wallet.setDefaultPolicy(Policy.getPolicy(wallet.getPolicyType(), wallet.getScriptType(), wallet.getKeystores(), 1));
             } else if(wallet.getPolicyType() == PolicyType.MULTI) {
-                wallet.setDefaultPolicy(Policy.getPolicy(wallet.getPolicyType(), wallet.getScriptType(), wallet.getKeystores(), (int)multisigControl.getLowValue(), wallet.getSortedMulti()));
+                wallet.setDefaultPolicy(Policy.getPolicy(wallet.getPolicyType(), wallet.getScriptType(), wallet.getKeystores(), wallet.getSortedMulti(), (int)multisigControl.getLowValue()));
             }
 
             if(ScriptType.getAddressableScriptTypes(wallet.getPolicyType()).contains(wallet.getScriptType())) {
