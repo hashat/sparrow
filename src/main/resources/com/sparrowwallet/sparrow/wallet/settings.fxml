@@ -9,6 +9,7 @@
 <?import com.sparrowwallet.sparrow.control.CopyableLabel?>
 <?import com.sparrowwallet.drongo.policy.PolicyType?>
 <?import com.sparrowwallet.drongo.protocol.ScriptType?>
+<?import com.sparrowwallet.drongo.policy.SortedMulti?>
 <?import com.sparrowwallet.sparrow.control.DescriptorArea?>
 <?import org.fxmisc.flowless.VirtualizedScrollPane?>
 <?import org.controlsfx.glyphfont.Glyph?>
@@ -71,6 +72,17 @@
                         <CopyableLabel fx:id="multisigLowLabel" />
                         <CopyableLabel text="/"/>
                         <CopyableLabel fx:id="multisigHighLabel" />
+                    </Field>
+                    <Field text="Use sorted keys:">
+                        <ComboBox fx:id="sortedMulti">
+                            <items>
+                                <FXCollections fx:factory="observableArrayList">
+                                    <SortedMulti fx:constant="SORTED" />
+                                    <SortedMulti fx:constant="UNSORTED" />
+                                </FXCollections>
+                            </items>
+                        </ComboBox>
+                        <HelpLabel helpText="BIP-67 describes a method to deterministically generate multi-sig transaction scripts, \nby using sorting so that the redeem script and corresponding P2(W)SH address are \nalways the same for a given set of keys and number of required signatures. \nHowever, for compatibility with other wallets (and addresses) you might need to disable \nsorting. This is an advanced feature, don't disable unless you know what you're doing." />
                     </Field>
                 </Fieldset>
             </Form>
