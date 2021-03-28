@@ -96,6 +96,10 @@ public class SettingsWalletForm extends WalletForm {
         if(original.getSortedMulti() != changed.getSortedMulti()) {
             return true;
         }
+        
+        if(original.getReceiveChId() != changed.getReceiveChId() || original.getChangeChId() != changed.getChangeChId()) {
+            return true;
+        }
 
         //TODO: Determine if Miniscript has changed for custom policies
 

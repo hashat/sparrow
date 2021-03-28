@@ -9,6 +9,7 @@ import javafx.fxml.Initializable;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.TextField;
 
 import java.net.URL;
 import java.time.ZoneId;
@@ -21,6 +22,12 @@ public class AdvancedController implements Initializable {
 
     @FXML
     private Spinner<Integer> gapLimit;
+
+    @FXML
+    private Spinner<Integer> receiveChId;
+
+    @FXML
+    private Spinner<Integer> changeChId;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -44,5 +51,46 @@ public class AdvancedController implements Initializable {
             wallet.setGapLimit(newValue);
             EventManager.get().post(new SettingsChangedEvent(wallet, SettingsChangedEvent.Type.GAP_LIMIT));
         });
+        
+        receiveChId.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 2147483647, wallet.getReceiveChId()));
+        receiveChId.valueProperty().addListener((observable, oldValue, newValue) -> {
+            int goodValue = 0;
+            int otherValue = changeChId.getValue();
+            if (newValue == otherValue) {
+                if (oldValue < newValue) { // we were going upwards
+                    goodValue = otherValue == Integer.MAX_VALUE ? 0 : otherValue + 1;
+                }
+                else { // we were going downwards
+                    goodValue = otherValue == 0 ? Integer.MAX_VALUE : otherValue - 1;
+                }
+                receiveChId.getEditor().setText(Integer.toString(goodValue));
+            }
+            else { // all good, no collision
+                goodValue = newValue;
+            }
+            wallet.setReceiveChId(goodValue);
+            EventManager.get().post(new SettingsChangedEvent(wallet, SettingsChangedEvent.Type.WALLET_CHAINS));
+        });
+        
+        changeChId.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 2147483647, wallet.getChangeChId()));
+        changeChId.valueProperty().addListener((observable, oldValue, newValue) -> {
+            int goodValue = 1;
+            int otherValue = receiveChId.getValue();
+            if (newValue == otherValue) {
+                if (oldValue < newValue) { // we were going upwards
+                    goodValue = otherValue == Integer.MAX_VALUE ? 0 : otherValue + 1;
+                }
+                else { // we were going downwards
+                    goodValue = otherValue == 0 ? Integer.MAX_VALUE : otherValue - 1;
+                }
+                changeChId.getEditor().setText(Integer.toString(goodValue));
+            }
+            else { // all good, no collision
+                goodValue = newValue;
+            }
+            wallet.setChangeChId(goodValue);
+            EventManager.get().post(new SettingsChangedEvent(wallet, SettingsChangedEvent.Type.WALLET_CHAINS));
+        });
+        
     }
 }

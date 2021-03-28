@@ -34,6 +34,12 @@
                     <Spinner fx:id="gapLimit" editable="true" prefWidth="90" />
                     <HelpLabel helpText="Change how far ahead to look for additional transactions beyond the highest derivation with previous transaction outputs."/>
                 </Field>
+                <Field text="Account Ids:">
+                    <Spinner fx:id="receiveChId" editable="true" prefWidth="60" />
+                    <HelpLabel helpText="Id number of the RECEIVE wallet chain, sometimes referred to as 'external account'. \nNormally 0, but can be defined to any number else for compatibility with third party wallets."/>
+                    <Spinner fx:id="changeChId" editable="true" prefWidth="60" />
+                    <HelpLabel helpText="Id number of the CHANGE wallet chain, sometimes referred to as 'internal account'. \nNormally 1, but can be defined to any number else for compatibility with third party wallets."/>
+                </Field>
             </Fieldset>
         </Form>
         </GridPane>
