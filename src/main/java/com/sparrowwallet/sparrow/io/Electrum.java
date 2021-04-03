@@ -223,7 +223,7 @@ public class Electrum implements KeystoreFileImport, WalletImport, WalletExport 
                     if(ew.addresses != null) {
                         try {
                             Address address = Address.fromString(key);
-                            Map<KeyPurpose, List<String>> keyPurposes = Map.of(KeyPurpose.RECEIVE, ew.addresses.receiving, KeyPurpose.CHANGE, ew.addresses.change);
+                            Map<KeyPurpose, List<String>> keyPurposes = Map.of(new KeyPurpose(0), ew.addresses.receiving, new KeyPurpose(1), ew.addresses.change);
                             for(KeyPurpose keyPurpose : keyPurposes.keySet()) {
                                 WalletNode purposeNode = wallet.getNode(keyPurpose);
                                 purposeNode.fillToIndex(keyPurposes.get(keyPurpose).size() - 1);
