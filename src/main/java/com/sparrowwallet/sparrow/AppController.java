@@ -658,9 +658,10 @@ public class AppController implements Initializable {
                 Storage.WalletBackupAndKey walletBackupAndKey = storage.loadWallet();
                 checkWalletNetwork(walletBackupAndKey.wallet);
                 restorePublicKeysFromSeed(walletBackupAndKey.wallet, null);
-                if(!walletBackupAndKey.wallet.isValid()) {
-                    throw new IllegalStateException("Wallet file is not valid.");
-                }
+//                if(!walletBackupAndKey.wallet.isValid()) {
+//                    throw new IllegalStateException("Wallet file is not valid.");
+//                }
+                walletBackupAndKey.wallet.checkWallet(); // hashat> in order not to lose the message why the check failed
                 addWalletTabOrWindow(storage, walletBackupAndKey.wallet, walletBackupAndKey.backupWallet, forceSameWindow);
             } else if(FileType.BINARY.equals(fileType)) {
                 WalletPasswordDialog dlg = new WalletPasswordDialog(file.getName(), WalletPasswordDialog.PasswordRequirement.LOAD);
