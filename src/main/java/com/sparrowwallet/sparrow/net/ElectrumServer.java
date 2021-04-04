@@ -152,10 +152,10 @@ public class ElectrumServer {
 
     public Map<WalletNode, Set<BlockTransactionHash>> getHistory(Wallet wallet) throws ServerException {
         Map<WalletNode, Set<BlockTransactionHash>> receiveTransactionMap = new TreeMap<>();
-        getHistory(wallet, KeyPurpose.RECEIVE, receiveTransactionMap);
+        getHistory(wallet, wallet.getReceiveChain(), receiveTransactionMap);
 
         Map<WalletNode, Set<BlockTransactionHash>> changeTransactionMap = new TreeMap<>();
-        getHistory(wallet, KeyPurpose.CHANGE, changeTransactionMap);
+        getHistory(wallet, wallet.getChangeChain(), changeTransactionMap);
 
         receiveTransactionMap.putAll(changeTransactionMap);
         return receiveTransactionMap;
@@ -711,7 +711,7 @@ public class ElectrumServer {
 
     public static Map<String, WalletNode> getAllScriptHashes(Wallet wallet) {
         Map<String, WalletNode> scriptHashes = new HashMap<>();
-        List<KeyPurpose> purposes = List.of(KeyPurpose.RECEIVE, KeyPurpose.CHANGE);
+        List<KeyPurpose> purposes = List.of(wallet.getReceiveChain(), wallet.getChangeChain());
         for(KeyPurpose keyPurpose : purposes) {
             for(WalletNode childNode : wallet.getNode(keyPurpose).getChildren()) {
                 scriptHashes.put(getScriptHash(wallet, childNode), childNode);

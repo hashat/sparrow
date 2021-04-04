@@ -194,7 +194,7 @@ public class ReceiveController extends WalletFormController implements Initializ
     }
 
     public void getNewAddress(ActionEvent event) {
-        NodeEntry freshEntry = getWalletForm().getFreshNodeEntry(KeyPurpose.RECEIVE, currentEntry);
+        NodeEntry freshEntry = getWalletForm().getFreshNodeEntry(getWalletForm().getWallet().getReceiveChain(), currentEntry);
         setNodeEntry(freshEntry);
     }
 

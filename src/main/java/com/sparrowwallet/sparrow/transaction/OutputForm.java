@@ -32,11 +32,11 @@ public class OutputForm extends IndexedTransactionForm {
     }
 
     public boolean isWalletConsolidation() {
-        return (getSigningWallet() != null && getSigningWallet().getWalletOutputScripts(KeyPurpose.RECEIVE).containsKey(getTransactionOutput().getScript()));
+        return (getSigningWallet() != null && getSigningWallet().getWalletOutputScripts(getSigningWallet().getReceiveChain()).containsKey(getTransactionOutput().getScript()));
     }
 
     public boolean isWalletChange() {
-        return (getSigningWallet() != null && getSigningWallet().getWalletOutputScripts(KeyPurpose.CHANGE).containsKey(getTransactionOutput().getScript()));
+        return (getSigningWallet() != null && getSigningWallet().getWalletOutputScripts(getSigningWallet().getChangeChain()).containsKey(getTransactionOutput().getScript()));
     }
 
     public boolean isWalletPayment() {

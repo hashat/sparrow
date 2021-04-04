@@ -166,11 +166,11 @@ public class TransactionData {
         }
 
         for(TransactionOutput txOutput : transaction.getOutputs()) {
-            WalletNode changeNode = getSigningWallet().getWalletOutputScripts(KeyPurpose.CHANGE).get(txOutput.getScript());
+            WalletNode changeNode = getSigningWallet().getWalletOutputScripts(getSigningWallet().getChangeChain()).get(txOutput.getScript());
             if(changeNode != null) {
                 signingWalletNodes.add(changeNode);
             } else {
-                WalletNode receiveNode = getSigningWallet().getWalletOutputScripts(KeyPurpose.RECEIVE).get(txOutput.getScript());
+                WalletNode receiveNode = getSigningWallet().getWalletOutputScripts(getSigningWallet().getReceiveChain()).get(txOutput.getScript());
                 if(receiveNode != null) {
                     signingWalletNodes.add(receiveNode);
                 }

@@ -85,8 +85,8 @@ public class WalletTransactionsEntry extends Entry {
     private static Collection<WalletTransaction> getWalletTransactions(Wallet wallet) {
         Map<BlockTransaction, WalletTransaction> walletTransactionMap = new TreeMap<>();
 
-        getWalletTransactions(wallet, walletTransactionMap, wallet.getNode(KeyPurpose.RECEIVE));
-        getWalletTransactions(wallet, walletTransactionMap, wallet.getNode(KeyPurpose.CHANGE));
+        getWalletTransactions(wallet, walletTransactionMap, wallet.getRNode());
+        getWalletTransactions(wallet, walletTransactionMap, wallet.getCNode());
 
         return new ArrayList<>(walletTransactionMap.values());
     }

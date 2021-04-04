@@ -97,7 +97,7 @@ public class SettingsWalletForm extends WalletForm {
             return true;
         }
         
-        if(original.getReceiveChId() != changed.getReceiveChId() || original.getChangeChId() != changed.getChangeChId()) {
+        if(!original.getReceiveChain().equals(changed.getReceiveChain()) || !original.getChangeChain().equals(changed.getChangeChain())) {
             return true;
         }
 

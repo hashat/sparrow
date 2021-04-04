@@ -127,8 +127,8 @@ public class WalletForm {
     }
 
     private boolean copyLabels(Wallet pastWallet) {
-        boolean changed = wallet.getNode(KeyPurpose.RECEIVE).copyLabels(pastWallet.getNode(KeyPurpose.RECEIVE));
-        changed |= wallet.getNode(KeyPurpose.CHANGE).copyLabels(pastWallet.getNode(KeyPurpose.CHANGE));
+        boolean changed = wallet.getRNode().copyLabels(pastWallet.getRNode());// = wallet.getNode(wallet.getReceiveChain()).copyLabels(pastWallet.getNode(pastWallet.getReceiveChain()));
+        changed |= wallet.getCNode().copyLabels(pastWallet.getCNode());// |= wallet.getNode(wallet.getChangeChain()).copyLabels(pastWallet.getNode(pastWallet.getChangeChain()));
 
         for(Map.Entry<Sha256Hash, BlockTransaction> txEntry : wallet.getTransactions().entrySet()) {
             BlockTransaction pastBlockTransaction = pastWallet.getTransactions().get(txEntry.getKey());
@@ -144,9 +144,10 @@ public class WalletForm {
 
     private void notifyIfChanged(Integer blockHeight, Wallet previousWallet, boolean labelsChanged) {
         List<WalletNode> historyChangedNodes = new ArrayList<>();
-        historyChangedNodes.addAll(getHistoryChangedNodes(previousWallet.getNode(KeyPurpose.RECEIVE).getChildren(), wallet.getNode(KeyPurpose.RECEIVE).getChildren()));
-        historyChangedNodes.addAll(getHistoryChangedNodes(previousWallet.getNode(KeyPurpose.CHANGE).getChildren(), wallet.getNode(KeyPurpose.CHANGE).getChildren()));
-
+//        historyChangedNodes.addAll(getHistoryChangedNodes(previousWallet.getNode(KeyPurpose.RECEIVE).getChildren(), wallet.getNode(KeyPurpose.RECEIVE).getChildren()));
+//        historyChangedNodes.addAll(getHistoryChangedNodes(previousWallet.getNode(KeyPurpose.CHANGE).getChildren(), wallet.getNode(KeyPurpose.CHANGE).getChildren()));
+        historyChangedNodes.addAll(getHistoryChangedNodes(previousWallet.getRNode().getChildren(), wallet.getRNode().getChildren()));
+        historyChangedNodes.addAll(getHistoryChangedNodes(previousWallet.getCNode().getChildren(), wallet.getCNode().getChildren()));
         boolean changed = labelsChanged;
         if(!historyChangedNodes.isEmpty()) {
             Platform.runLater(() -> EventManager.get().post(new WalletHistoryChangedEvent(wallet, storage, historyChangedNodes)));

@@ -27,15 +27,15 @@ public class AddressesController extends WalletFormController implements Initial
 
     @Override
     public void initializeView() {
-        receiveTable.initialize(getWalletForm().getNodeEntry(KeyPurpose.RECEIVE));
-        changeTable.initialize(getWalletForm().getNodeEntry(KeyPurpose.CHANGE));
+        receiveTable.initialize(getWalletForm().getNodeEntry(getWalletForm().getWallet().getReceiveChain()));
+        changeTable.initialize(getWalletForm().getNodeEntry(getWalletForm().getWallet().getChangeChain()));
     }
 
     @Subscribe
     public void walletNodesChanged(WalletNodesChangedEvent event) {
         if(event.getWallet().equals(walletForm.getWallet())) {
-            receiveTable.updateAll(getWalletForm().getNodeEntry(KeyPurpose.RECEIVE));
-            changeTable.updateAll(getWalletForm().getNodeEntry(KeyPurpose.CHANGE));
+            receiveTable.updateAll(getWalletForm().getNodeEntry(getWalletForm().getWallet().getReceiveChain()));
+            changeTable.updateAll(getWalletForm().getNodeEntry(getWalletForm().getWallet().getChangeChain()));
         }
     }
 
@@ -79,8 +79,8 @@ public class AddressesController extends WalletFormController implements Initial
     @Subscribe
     public void walletAddressesStatusChanged(WalletAddressesStatusEvent event) {
         if(event.getWallet().equals(walletForm.getWallet())) {
-            receiveTable.updateAll(getWalletForm().getNodeEntry(KeyPurpose.RECEIVE));
-            changeTable.updateAll(getWalletForm().getNodeEntry(KeyPurpose.CHANGE));
+            receiveTable.updateAll(getWalletForm().getNodeEntry(getWalletForm().getWallet().getReceiveChain()));
+            changeTable.updateAll(getWalletForm().getNodeEntry(getWalletForm().getWallet().getChangeChain()));
         }
     }
 }

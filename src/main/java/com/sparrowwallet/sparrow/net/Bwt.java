@@ -60,9 +60,9 @@ public class Bwt {
 
         List<String> outputDescriptors = new ArrayList<>();
         for(Wallet wallet : validWallets) {
-            OutputDescriptor receiveOutputDescriptor = OutputDescriptor.getOutputDescriptor(wallet, KeyPurpose.RECEIVE);
+            OutputDescriptor receiveOutputDescriptor = OutputDescriptor.getOutputDescriptor(wallet, wallet.getReceiveChain());
             outputDescriptors.add(receiveOutputDescriptor.toString(false, false));
-            OutputDescriptor changeOutputDescriptor = OutputDescriptor.getOutputDescriptor(wallet, KeyPurpose.CHANGE);
+            OutputDescriptor changeOutputDescriptor = OutputDescriptor.getOutputDescriptor(wallet, wallet.getChangeChain());
             outputDescriptors.add(changeOutputDescriptor.toString(false, false));
         }
 

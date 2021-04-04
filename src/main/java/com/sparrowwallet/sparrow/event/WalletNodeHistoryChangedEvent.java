@@ -19,7 +19,7 @@ public class WalletNodeHistoryChangedEvent {
     }
 
     public WalletNode getWalletNode(Wallet wallet) {
-        List<KeyPurpose> keyPurposes = List.of(KeyPurpose.RECEIVE, KeyPurpose.CHANGE);
+        List<KeyPurpose> keyPurposes = List.of(wallet.getReceiveChain(), wallet.getChangeChain());
         for(KeyPurpose keyPurpose : keyPurposes) {
             WalletNode changedNode = getWalletNode(wallet, keyPurpose);
             if(changedNode != null) {

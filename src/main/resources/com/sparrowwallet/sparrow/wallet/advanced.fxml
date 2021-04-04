@@ -36,9 +36,9 @@
                 </Field>
                 <Field text="Account Ids:">
                     <Spinner fx:id="receiveChId" editable="true" prefWidth="60" />
-                    <HelpLabel helpText="Id number of the RECEIVE wallet chain, sometimes referred to as 'external account'. \nNormally 0, but can be defined to any number else for compatibility with third party wallets."/>
+                    <HelpLabel helpText="Id number of the RECEIVE wallet chain, sometimes referred to as 'external account'. \nNormally 0, but can be defined to any other number for compatibility with third party wallets."/>
                     <Spinner fx:id="changeChId" editable="true" prefWidth="60" />
-                    <HelpLabel helpText="Id number of the CHANGE wallet chain, sometimes referred to as 'internal account'. \nNormally 1, but can be defined to any number else for compatibility with third party wallets."/>
+                    <HelpLabel helpText="Id number of the CHANGE wallet chain, sometimes referred to as 'internal account'. \nNormally 1, but can be defined to any other number for compatibility with third party wallets. \nCan't be the same as the Id for RECEIVE wallet chain."/>
                 </Field>
             </Fieldset>
         </Form>

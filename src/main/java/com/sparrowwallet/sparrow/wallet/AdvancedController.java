@@ -52,7 +52,7 @@ public class AdvancedController implements Initializable {
             EventManager.get().post(new SettingsChangedEvent(wallet, SettingsChangedEvent.Type.GAP_LIMIT));
         });
         
-        receiveChId.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 2147483647, wallet.getReceiveChId()));
+        receiveChId.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 2147483647, wallet.getReceiveChain().getPathIndex().i()));
         receiveChId.valueProperty().addListener((observable, oldValue, newValue) -> {
             int goodValue = 0;
             int otherValue = changeChId.getValue();
@@ -72,7 +72,7 @@ public class AdvancedController implements Initializable {
             EventManager.get().post(new SettingsChangedEvent(wallet, SettingsChangedEvent.Type.WALLET_CHAINS));
         });
         
-        changeChId.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 2147483647, wallet.getChangeChId()));
+        changeChId.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 2147483647, wallet.getChangeChain().getPathIndex().i()));
         changeChId.valueProperty().addListener((observable, oldValue, newValue) -> {
             int goodValue = 1;
             int otherValue = receiveChId.getValue();
