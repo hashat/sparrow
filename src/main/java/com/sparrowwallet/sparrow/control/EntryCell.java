@@ -184,7 +184,7 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
         List<TransactionOutput> consolidationOutputs = transactionEntry.getChildren().stream()
                 .filter(e -> e instanceof HashIndexEntry)
                 .map(e -> (HashIndexEntry)e)
-                .filter(e -> e.getType().equals(HashIndexEntry.Type.OUTPUT) && e.getKeyPurpose().equals(transactionEntry.getWallet().getReceiveChain())) // == KeyPurpose.RECEIVE)
+                .filter(e -> e.getType().equals(HashIndexEntry.Type.OUTPUT) && e.getKeyPurpose().equals(transactionEntry.getWallet().getReceiveChain())) // Hashat> old: == KeyPurpose.RECEIVE)
                 .map(e -> e.getBlockTransaction().getTransaction().getOutputs().get((int)e.getHashIndex().getIndex()))
                 .collect(Collectors.toList());
 

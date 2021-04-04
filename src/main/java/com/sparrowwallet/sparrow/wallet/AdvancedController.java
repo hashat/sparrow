@@ -57,15 +57,15 @@ public class AdvancedController implements Initializable {
             int goodValue = 0;
             int otherValue = changeChId.getValue();
             if (newValue == otherValue) {
-                if (oldValue < newValue) { // we were going upwards
+                if (oldValue < newValue) { // Hashat> we were going upwards
                     goodValue = otherValue == Integer.MAX_VALUE ? 0 : otherValue + 1;
                 }
-                else { // we were going downwards
+                else { // Hashat> we were going downwards
                     goodValue = otherValue == 0 ? Integer.MAX_VALUE : otherValue - 1;
                 }
                 receiveChId.getEditor().setText(Integer.toString(goodValue));
             }
-            else { // all good, no collision
+            else { // Hashat> all good, no collision
                 goodValue = newValue;
             }
             wallet.setReceiveChId(goodValue);
@@ -77,15 +77,15 @@ public class AdvancedController implements Initializable {
             int goodValue = 1;
             int otherValue = receiveChId.getValue();
             if (newValue == otherValue) {
-                if (oldValue < newValue) { // we were going upwards
+                if (oldValue < newValue) { // Hashat> we were going upwards
                     goodValue = otherValue == Integer.MAX_VALUE ? 0 : otherValue + 1;
                 }
-                else { // we were going downwards
+                else { // Hashat> we were going downwards
                     goodValue = otherValue == 0 ? Integer.MAX_VALUE : otherValue - 1;
                 }
                 changeChId.getEditor().setText(Integer.toString(goodValue));
             }
-            else { // all good, no collision
+            else { // Hashat> all good, no collision
                 goodValue = newValue;
             }
             wallet.setChangeChId(goodValue);
