@@ -94,7 +94,7 @@ public class AppServices {
         @Override
         public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean online) {
             if(online) {
-                if(Config.get().requiresTor() && !isTorRunning()) {
+                if(Config.get().requiresInternalTor() && !isTorRunning()) {
                     torService.start();
                 } else {
                     restartServices();
@@ -122,7 +122,7 @@ public class AppServices {
         onlineProperty.addListener(onlineServicesListener);
 
         if(config.getMode() == Mode.ONLINE) {
-            if(config.requiresTor()) {
+            if(config.requiresInternalTor()) {
                 torService.start();
             } else {
                 restartServices();
@@ -208,6 +208,37 @@ public class AppServices {
                 connectionService.setRestartOnFailure(false);
             }
 
+            if(failEvent.getSource().getException() instanceof TlsServerException && failEvent.getSource().getException().getCause() != null) {
+                TlsServerException tlsServerException = (TlsServerException)failEvent.getSource().getException();
+                connectionService.setRestartOnFailure(false);
+                if(tlsServerException.getCause().getMessage().contains("PKIX path building failed")) {
+                    File crtFile = Config.get().getElectrumServerCert();
+                    if(crtFile != null) {
+                        AppServices.showErrorDialog("SSL Handshake Failed", "The configured server certificate at " + crtFile.getAbsolutePath() + " did not match the certificate provided by the server at " + tlsServerException.getServer().getHost() + "." +
+                                "\n\nThis may indicate a man-in-the-middle attack!" +
+                                "\n\nChange the configured server certificate if you would like to proceed.");
+                    } else {
+                        crtFile = Storage.getCertificateFile(tlsServerException.getServer().getHost());
+                        if(crtFile != null) {
+                            Optional<ButtonType> optButton = AppServices.showErrorDialog("SSL Handshake Failed", "The certificate provided by the server at " + tlsServerException.getServer().getHost() + " appears to have changed." +
+                                    "\n\nThis may indicate a man-in-the-middle attack!" +
+                                    "\n\nDo you still want to proceed?", ButtonType.NO, ButtonType.YES);
+                            if(optButton.isPresent() && optButton.get() == ButtonType.YES) {
+                                crtFile.delete();
+                                Platform.runLater(() -> restartService(connectionService));
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if(failEvent.getSource().getException() instanceof ProxyServerException && Config.get().isUseProxy() && Config.get().requiresTor()) {
+                Config.get().setUseProxy(false);
+                Platform.runLater(() -> restartService(torService));
+                return;
+            }
+
             onlineProperty.removeListener(onlineServicesListener);
             onlineProperty.setValue(false);
             onlineProperty.addListener(onlineServicesListener);
@@ -289,6 +320,23 @@ public class AppServices {
             EventManager.get().post(new TorReadyStatusEvent());
         });
         torService.setOnFailed(workerStateEvent -> {
+            Throwable exception = workerStateEvent.getSource().getException();
+            if(exception instanceof TorServerAlreadyBoundException) {
+                String proxyServer = Config.get().getProxyServer();
+                if(proxyServer == null || proxyServer.equals("")) {
+                    proxyServer = "localhost:9050";
+                    Config.get().setProxyServer(proxyServer);
+                }
+
+                if(proxyServer.equals("localhost:9050") || proxyServer.equals("127.0.0.1:9050")) {
+                    Config.get().setUseProxy(true);
+                    torService.cancel();
+                    restartServices();
+                    EventManager.get().post(new TorExternalStatusEvent());
+                    return;
+                }
+            }
+
             EventManager.get().post(new TorFailedStatusEvent(workerStateEvent.getSource().getException()));
         });
 
