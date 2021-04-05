@@ -3,6 +3,7 @@ package com.sparrowwallet.sparrow.control;
 import com.github.sarxos.webcam.WebcamEvent;
 import com.github.sarxos.webcam.WebcamListener;
 import com.github.sarxos.webcam.WebcamResolution;
+import com.github.sarxos.webcam.WebcamUpdater;
 import com.sparrowwallet.drongo.ExtendedKey;
 import com.sparrowwallet.drongo.KeyDerivation;
 import com.sparrowwallet.drongo.OutputDescriptor;
@@ -16,6 +17,7 @@ import com.sparrowwallet.drongo.protocol.Base43;
 import com.sparrowwallet.drongo.protocol.ScriptType;
 import com.sparrowwallet.drongo.protocol.Transaction;
 import com.sparrowwallet.drongo.psbt.PSBT;
+import com.sparrowwallet.drongo.psbt.PSBTParseException;
 import com.sparrowwallet.drongo.uri.BitcoinURI;
 import com.sparrowwallet.drongo.wallet.Keystore;
 import com.sparrowwallet.drongo.wallet.Wallet;
@@ -28,13 +30,17 @@ import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.glyphfont.FontAwesome5;
 import com.sparrowwallet.sparrow.io.Config;
 import javafx.application.Platform;
+import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
+import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.*;
-import javafx.scene.layout.StackPane;
+import javafx.scene.layout.*;
+import javafx.util.Duration;
 import org.controlsfx.glyphfont.Glyph;
 import org.controlsfx.tools.Borders;
 import org.slf4j.Logger;
@@ -59,12 +65,14 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
     private final WebcamService webcamService;
     private List<String> parts;
 
-    private boolean isUr;
     private QRScanDialog.Result result;
 
     private static final Pattern PART_PATTERN = Pattern.compile("p(\\d+)of(\\d+) (.+)");
 
+    private static final int SCAN_PERIOD_MILLIS = 100;
     private final ObjectProperty<WebcamResolution> webcamResolutionProperty = new SimpleObjectProperty<>(WebcamResolution.VGA);
+
+    private final DoubleProperty percentComplete = new SimpleDoubleProperty(0.0);
 
     public QRScanDialog() {
         this.decoder = new URDecoder();
@@ -74,7 +82,9 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
             webcamResolutionProperty.set(WebcamResolution.HD);
         }
 
-        this.webcamService = new WebcamService(webcamResolutionProperty.get(), new QRScanListener());
+        this.webcamService = new WebcamService(webcamResolutionProperty.get(), new QRScanListener(), new ScanDelayCalculator());
+        webcamService.setPeriod(Duration.millis(SCAN_PERIOD_MILLIS));
+        webcamService.setRestartOnFailure(false);
         WebcamView webcamView = new WebcamView(webcamService);
 
         final DialogPane dialogPane = new QRScanDialogPane();
@@ -83,8 +93,23 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
 
         StackPane stackPane = new StackPane();
         stackPane.getChildren().add(webcamView.getView());
+        Node wrappedView = Borders.wrap(stackPane).lineBorder().buildAll();
 
-        dialogPane.setContent(Borders.wrap(stackPane).lineBorder().buildAll());
+        ProgressBar progressBar = new ProgressBar();
+        progressBar.setMinHeight(20);
+        progressBar.setPadding(new Insets(0, 10, 0, 10));
+        progressBar.setPrefWidth(Integer.MAX_VALUE);
+        progressBar.progressProperty().bind(percentComplete);
+        webcamService.openingProperty().addListener((observable, oldValue, newValue) -> {
+            if(percentComplete.get() <= 0.0) {
+                Platform.runLater(() -> percentComplete.set(newValue ? 0.0 : -1.0));
+            }
+        });
+
+        VBox vBox = new VBox(20);
+        vBox.getChildren().addAll(wrappedView, progressBar);
+
+        dialogPane.setContent(vBox);
 
         webcamService.resultProperty().addListener(new QRResultListener());
         webcamService.setOnFailed(failedEvent -> {
@@ -111,7 +136,7 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
         final ButtonType hdButtonType = new javafx.scene.control.ButtonType("Use HD Capture", ButtonBar.ButtonData.LEFT);
         dialogPane.getButtonTypes().addAll(hdButtonType, cancelButtonType);
         dialogPane.setPrefWidth(646);
-        dialogPane.setPrefHeight(webcamResolutionProperty.get() == WebcamResolution.HD ? 450 : 550);
+        dialogPane.setPrefHeight(webcamResolutionProperty.get() == WebcamResolution.HD ? 490 : 590);
 
         setResultConverter(dialogButton -> dialogButton != cancelButtonType ? result : null);
     }
@@ -127,11 +152,10 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
             String qrtext = qrResult.getText();
             Matcher partMatcher = PART_PATTERN.matcher(qrtext);
 
-            if(isUr || qrtext.toLowerCase().startsWith(UR.UR_PREFIX)) {
-                isUr = true;
-
+            if(qrtext.toLowerCase().startsWith(UR.UR_PREFIX)) {
                 if(LegacyURDecoder.isLegacyURFragment(qrtext)) {
-                    legacyDecoder.receivePart(qrtext.toLowerCase());
+                    legacyDecoder.receivePart(qrtext);
+                    Platform.runLater(() -> percentComplete.setValue(legacyDecoder.getPercentComplete()));
 
                     if(legacyDecoder.isComplete()) {
                         try {
@@ -143,6 +167,7 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
                     }
                 } else {
                     decoder.receivePart(qrtext);
+                    Platform.runLater(() -> percentComplete.setValue(decoder.getEstimatedPercentComplete()));
 
                     if(decoder.getResult() != null) {
                         URDecoder.Result urResult = decoder.getResult();
@@ -164,12 +189,20 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
                 }
                 parts.set(m - 1, payload);
 
+                if(n > 0) {
+                    Platform.runLater(() -> percentComplete.setValue((double)parts.stream().filter(Objects::nonNull).count() / n));
+                }
+
                 if(parts.stream().filter(Objects::nonNull).count() == n) {
                     String complete = String.join("", parts);
                     try {
                         PSBT psbt = PSBT.fromString(complete);
                         result = new Result(psbt);
                         return;
+                    } catch(PSBTParseException e) {
+                        if(PSBT.isPSBT(complete)) {
+                            log.error("Error parsing PSBT", e);
+                        }
                     } catch(Exception e) {
                         //ignore, bytes not parsable as PSBT
                     }
@@ -218,6 +251,10 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
                     psbt = PSBT.fromString(qrtext);
                     result = new Result(psbt);
                     return;
+                } catch(PSBTParseException e) {
+                    if(PSBT.isPSBT(qrtext)) {
+                        log.error("Error parsing PSBT", e);
+                    }
                 } catch(Exception e) {
                     //Ignore, not parseable as Base64 or hex
                 }
@@ -276,6 +313,10 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
                     try {
                         PSBT psbt = new PSBT(urBytes);
                         return new Result(psbt);
+                    } catch(PSBTParseException e) {
+                        if(PSBT.isPSBT(urBytes)) {
+                            log.error("Error parsing PSBT", e);
+                        }
                     } catch(Exception e) {
                         //ignore, bytes not parsable as PSBT
                     }
@@ -484,6 +525,7 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
     private class QRScanDialogPane extends DialogPane {
         @Override
         protected Node createButton(ButtonType buttonType) {
+            Node button = null;
             if(buttonType.getButtonData() == ButtonBar.ButtonData.LEFT) {
                 ToggleButton hd = new ToggleButton(buttonType.getText());
                 hd.setSelected(webcamResolutionProperty.get() == WebcamResolution.HD);
@@ -497,10 +539,13 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
                     setHdGraphic(hd, newValue);
                 });
 
-                return hd;
+                button = hd;
+            } else {
+                button = super.createButton(buttonType);
             }
 
-            return super.createButton(buttonType);
+            button.disableProperty().bind(webcamService.openingProperty());
+            return button;
         }
 
         private void setHdGraphic(ToggleButton hd, boolean isHd) {
@@ -661,6 +706,12 @@ public class QRScanDialog extends Dialog<QRScanDialog.Result> {
 
         public URException(String message, Throwable cause) {
             super(message, cause);
+        }
+    }
+
+    public static class ScanDelayCalculator implements WebcamUpdater.DelayCalculator {
+        public long calculateDelay(long snapshotDuration, double deviceFps) {
+            return Math.max(SCAN_PERIOD_MILLIS - snapshotDuration, 0L);
         }
     }
 }
