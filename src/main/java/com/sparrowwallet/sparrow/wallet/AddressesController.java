@@ -99,11 +99,11 @@ public class AddressesController extends WalletFormController implements Initial
     }
 
     public void exportReceiveAddresses(ActionEvent event) {
-        exportAddresses(KeyPurpose.RECEIVE);
+        exportAddresses(walletForm.getWallet().getReceiveChain());
     }
 
     public void exportChangeAddresses(ActionEvent event) {
-        exportAddresses(KeyPurpose.CHANGE);
+        exportAddresses(walletForm.getWallet().getChangeChain());
     }
 
     private void exportAddresses(KeyPurpose keyPurpose) {
@@ -111,7 +111,8 @@ public class AddressesController extends WalletFormController implements Initial
 
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Export Addresses to CSV");
-        fileChooser.setInitialFileName(getWalletForm().getWallet().getName() + "-" + keyPurpose.name().toLowerCase() + "-addresses.txt");
+// Hashat> old:       fileChooser.setInitialFileName(getWalletForm().getWallet().getName() + "-" + keyPurpose.name().toLowerCase() + "-addresses.txt");
+        fileChooser.setInitialFileName(getWalletForm().getWallet().getName() + "-" + (keyPurpose.equals(walletForm.getWallet().getReceiveChain()) ? "receive" : "change") + "-addresses.txt");
 
         Wallet copy = getWalletForm().getWallet().copy();
         WalletNode purposeNode = copy.getNode(keyPurpose);
