@@ -20,12 +20,7 @@ repositories {
     maven { url 'https://oss.sonatype.org/content/groups/public' }
     maven { url 'https://mymavenrepo.com/repo/29EACwkkGcoOKnbx3bxN/' }
     maven { url 'https://jitpack.io' }
-<<<<<<< HEAD
-//    maven { url 'http://maven.openimaj.org/' }
-    maven { url 'https://maven.ecs.soton.ac.uk/content/groups/maven.openimaj.org' }
-=======
     maven { url 'https://maven.ecs.soton.ac.uk/content/groups/maven.openimaj.org/' }
->>>>>>> 685fef6b765923cd9b24ba7c534067c86260b27e
 }
 
 tasks.withType(AbstractArchiveTask) {
