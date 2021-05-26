@@ -8,6 +8,8 @@ import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.event.KeystoreImportEvent;
 import com.sparrowwallet.sparrow.glyphfont.FontAwesome5;
 import com.sparrowwallet.sparrow.io.*;
+import javafx.beans.property.IntegerProperty;
+import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleListProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -56,6 +58,7 @@ public class MnemonicKeystoreImportPane extends TitledDescriptionPane {
 
     private SimpleListProperty<String> wordEntriesProperty;
     private final SimpleStringProperty passphraseProperty = new SimpleStringProperty();
+    private IntegerProperty defaultWordSizeProperty;
 
     public MnemonicKeystoreImportPane(Wallet wallet, KeystoreMnemonicImport importer) {
         super(importer.getName(), "Seed import", importer.getKeystoreImportDescription(), "image/" + importer.getWalletModel().getType() + ".png");
@@ -67,7 +70,7 @@ public class MnemonicKeystoreImportPane extends TitledDescriptionPane {
     }
 
     public MnemonicKeystoreImportPane(Keystore keystore) {
-        super(keystore.getSeed().getType().getName(), keystore.getSeed().needsPassphrase() ? "Passphrase enabled" : "Passphrase disabled", "", "image/" + WalletModel.SEED.getType() + ".png");
+        super(keystore.getSeed().getType().getName(), keystore.getSeed().needsPassphrase() ? "Passphrase entered" : "No passphrase", "", "image/" + WalletModel.SEED.getType() + ".png");
         this.wallet = null;
         this.importer = null;
         showHideLink.setVisible(false);
@@ -85,15 +88,20 @@ public class MnemonicKeystoreImportPane extends TitledDescriptionPane {
     private void createEnterMnemonicButton() {
         enterMnemonicButton = new SplitMenuButton();
         enterMnemonicButton.setAlignment(Pos.CENTER_RIGHT);
-        enterMnemonicButton.setText("Set Words Size");
+        enterMnemonicButton.setText("Enter 24 Words");
+        defaultWordSizeProperty = new SimpleIntegerProperty(24);
+        defaultWordSizeProperty.addListener((observable, oldValue, newValue) -> {
+            enterMnemonicButton.setText("Enter " + newValue + " Words");
+        });
         enterMnemonicButton.setOnAction(event -> {
-            enterMnemonic(24);
+            enterMnemonic(defaultWordSizeProperty.get());
         });
         int[] numberWords = new int[] {24, 21, 18, 15, 12};
         for(int i = 0; i < numberWords.length; i++) {
-            MenuItem item = new MenuItem(numberWords[i] + " words");
+            MenuItem item = new MenuItem("Enter " + numberWords[i] + " Words");
             final int words = numberWords[i];
             item.setOnAction(event -> {
+                defaultWordSizeProperty.set(words);
                 enterMnemonic(words);
             });
             enterMnemonicButton.getItems().add(item);
@@ -110,7 +118,7 @@ public class MnemonicKeystoreImportPane extends TitledDescriptionPane {
             importButton.setDisable(true);
             importKeystore(wallet.getScriptType().getDefaultDerivation(), false);
         });
-        String[] accounts = new String[] {"Default Account #0", "Account #1", "Account #2", "Account #3", "Account #4", "Account #5", "Account #6", "Account #7", "Account #8", "Account #9"};
+        String[] accounts = new String[] {"Import Default Account #0", "Import Account #1", "Import Account #2", "Import Account #3", "Import Account #4", "Import Account #5", "Import Account #6", "Import Account #7", "Import Account #8", "Import Account #9"};
         int scriptAccountsLength = ScriptType.P2SH.equals(wallet.getScriptType()) ? 1 : accounts.length;
         for(int i = 0; i < scriptAccountsLength; i++) {
             MenuItem item = new MenuItem(accounts[i]);
@@ -202,14 +210,14 @@ public class MnemonicKeystoreImportPane extends TitledDescriptionPane {
             confirmButton.setDefaultButton(true);
             confirmButton.setTooltip(new Tooltip("Re-enter the generated word list to confirm your backup is correct"));
 
-            calculateButton = new Button("Calculate Seed");
+            calculateButton = new Button("Create Keystore");
             calculateButton.setDisable(true);
             calculateButton.setDefaultButton(true);
             calculateButton.setOnAction(event -> {
                 prepareImport();
             });
             calculateButton.managedProperty().bind(calculateButton.visibleProperty());
-            calculateButton.setTooltip(new Tooltip("Calculate the seed from the provided word list"));
+            calculateButton.setTooltip(new Tooltip("Create the keystore from the provided word list"));
 
             backButton = new Button("Back");
             backButton.setOnAction(event -> {
@@ -360,7 +368,7 @@ public class MnemonicKeystoreImportPane extends TitledDescriptionPane {
             importButton.setDisable(false);
             setDescription("Ready to import");
             showHideLink.setText("Show Derivation...");
-            showHideLink.setVisible(true);
+            showHideLink.setVisible(false);
             setContent(getDerivationEntry(wallet.getScriptType().getDefaultDerivation()));
         }
     }
@@ -419,11 +427,11 @@ public class MnemonicKeystoreImportPane extends TitledDescriptionPane {
             autoCompletionBinding.setDelay(50);
 
             ValidationSupport validationSupport = new ValidationSupport();
+            validationSupport.setValidationDecorator(new StyleClassValidationDecoration());
             validationSupport.registerValidator(wordField, Validator.combine(
                     Validator.createEmptyValidator("Word is required"),
                     (Control c, String newValue) -> ValidationResult.fromErrorIf( c, "Invalid word", !wordList.contains(newValue))
             ));
-            validationSupport.setValidationDecorator(new StyleClassValidationDecoration());
 
             wordField.textProperty().addListener((observable, oldValue, newValue) -> {
                 wordEntryList.set(wordNumber, newValue);
@@ -493,13 +501,14 @@ public class MnemonicKeystoreImportPane extends TitledDescriptionPane {
         HBox.setHgrow(derivationField, Priority.ALWAYS);
 
         ValidationSupport validationSupport = new ValidationSupport();
+        validationSupport.setValidationDecorator(new StyleClassValidationDecoration());
         validationSupport.registerValidator(derivationField, Validator.combine(
                 Validator.createEmptyValidator("Derivation is required"),
                 (Control c, String newValue) -> ValidationResult.fromErrorIf( c, "Invalid derivation", !KeyDerivation.isValid(newValue))
         ));
-        validationSupport.setValidationDecorator(new StyleClassValidationDecoration());
 
-        Button importDerivationButton = new Button("Import");
+        Button importDerivationButton = new Button("Import Custom Derivation Keystore");
+        importDerivationButton.setDisable(true);
         importDerivationButton.setOnAction(event -> {
             showHideLink.setVisible(true);
             setExpanded(false);
@@ -508,7 +517,8 @@ public class MnemonicKeystoreImportPane extends TitledDescriptionPane {
         });
 
         derivationField.textProperty().addListener((observable, oldValue, newValue) -> {
-            importDerivationButton.setDisable(newValue.isEmpty() || !KeyDerivation.isValid(newValue));
+            importButton.setDisable(newValue.isEmpty() || !KeyDerivation.isValid(newValue) || !KeyDerivation.parsePath(newValue).equals(derivation));
+            importDerivationButton.setDisable(newValue.isEmpty() || !KeyDerivation.isValid(newValue) || KeyDerivation.parsePath(newValue).equals(derivation));
         });
 
         HBox contentBox = new HBox();

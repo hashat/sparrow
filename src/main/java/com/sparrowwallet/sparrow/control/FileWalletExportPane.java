@@ -87,6 +87,7 @@ public class FileWalletExportPane extends TitledDescriptionPane {
                 exporter.getWalletModel().toDisplayString().toLowerCase().replace(" ", "") +
                 (extension == null || extension.isEmpty() ? "" : "." + extension));
 
+        AppServices.moveToActiveWindowScreen(window, 800, 450);
         File file = fileChooser.showSaveDialog(window);
         if(file != null) {
             exportWallet(file);
@@ -126,9 +127,10 @@ public class FileWalletExportPane extends TitledDescriptionPane {
     private void exportWallet(File file, Wallet exportWallet) {
         try {
             if(file != null) {
-                OutputStream outputStream = new FileOutputStream(file);
-                exporter.exportWallet(exportWallet, outputStream);
-                EventManager.get().post(new WalletExportEvent(exportWallet));
+                try(OutputStream outputStream = new FileOutputStream(file)) {
+                    exporter.exportWallet(exportWallet, outputStream);
+                    EventManager.get().post(new WalletExportEvent(exportWallet));
+                }
             } else {
                 ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
                 exporter.exportWallet(exportWallet, outputStream);

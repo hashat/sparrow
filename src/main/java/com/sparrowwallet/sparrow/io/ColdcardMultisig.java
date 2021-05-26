@@ -36,7 +36,7 @@ public class ColdcardMultisig implements WalletImport, KeystoreFileImport, Walle
     @Override
     public Keystore getKeystore(ScriptType scriptType, InputStream inputStream, String password) throws ImportException {
         InputStreamReader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-        ColdcardKeystore cck = Storage.getGson().fromJson(reader, ColdcardKeystore.class);
+        ColdcardKeystore cck = JsonPersistence.getGson().fromJson(reader, ColdcardKeystore.class);
 
         Keystore keystore = new Keystore("Coldcard");
         keystore.setSource(KeystoreSource.HW_AIRGAPPED);
@@ -180,7 +180,7 @@ public class ColdcardMultisig implements WalletImport, KeystoreFileImport, Walle
         }
 
         try {
-            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(outputStream));
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
             writer.append("# " + getName() + " setup file (created by Sparrow)\n");
             writer.append("#\n");
             writer.append("Name: ").append(wallet.getName()).append("\n");
@@ -202,7 +202,6 @@ public class ColdcardMultisig implements WalletImport, KeystoreFileImport, Walle
             }
 
             writer.flush();
-            writer.close();
         } catch(Exception e) {
             log.error("Error exporting Coldcard multisig wallet", e);
             throw new ExportException("Error exporting Coldcard multisig wallet", e);

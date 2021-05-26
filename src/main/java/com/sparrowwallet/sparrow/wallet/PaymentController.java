@@ -14,10 +14,7 @@ import com.sparrowwallet.drongo.wallet.UtxoSelector;
 import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.CurrencyRate;
 import com.sparrowwallet.sparrow.EventManager;
-import com.sparrowwallet.sparrow.control.CoinTextFormatter;
-import com.sparrowwallet.sparrow.control.CopyableTextField;
-import com.sparrowwallet.sparrow.control.FiatLabel;
-import com.sparrowwallet.sparrow.control.QRScanDialog;
+import com.sparrowwallet.sparrow.control.*;
 import com.sparrowwallet.sparrow.event.BitcoinUnitChangedEvent;
 import com.sparrowwallet.sparrow.event.ExchangeRatesUpdatedEvent;
 import com.sparrowwallet.sparrow.event.FiatCurrencySelectedEvent;
@@ -33,13 +30,19 @@ import javafx.scene.control.*;
 import org.controlsfx.validation.ValidationResult;
 import org.controlsfx.validation.ValidationSupport;
 import org.controlsfx.validation.Validator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URL;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.*;
 
+import static com.sparrowwallet.sparrow.AppServices.showErrorDialog;
+
 public class PaymentController extends WalletFormController implements Initializable {
+    private static final Logger log = LoggerFactory.getLogger(PaymentController.class);
+
     private SendController sendController;
 
     private ValidationSupport validationSupport;
@@ -58,6 +61,9 @@ public class PaymentController extends WalletFormController implements Initializ
 
     @FXML
     private FiatLabel fiatAmount;
+
+    @FXML
+    private Label amountStatus;
 
     @FXML
     private ToggleButton maxButton;
@@ -110,7 +116,7 @@ public class PaymentController extends WalletFormController implements Initializ
             }
 
             revalidate(amount, amountListener);
-            maxButton.setDisable(!isValidRecipientAddress());
+            maxButton.setDisable(!isValidAddressAndLabel());
             sendController.updateTransaction();
 
             if(validationSupport != null) {
@@ -119,6 +125,7 @@ public class PaymentController extends WalletFormController implements Initializ
         });
 
         label.textProperty().addListener((observable, oldValue, newValue) -> {
+            maxButton.setDisable(!isValidAddressAndLabel());
             sendController.getCreateButton().setDisable(sendController.getWalletTransaction() == null || newValue == null || newValue.isEmpty() || sendController.isInsufficientFeeRate());
             sendController.updateTransaction();
         });
@@ -136,9 +143,14 @@ public class PaymentController extends WalletFormController implements Initializ
             }
         });
 
-        maxButton.setDisable(!isValidRecipientAddress());
+        maxButton.setDisable(!isValidAddressAndLabel());
         sendController.utxoLabelSelectionProperty().addListener((observable, oldValue, newValue) -> {
             maxButton.setText("Max" + newValue);
+        });
+        amountStatus.managedProperty().bind(amountStatus.visibleProperty());
+        amountStatus.setVisible(sendController.isInsufficientInputs());
+        sendController.insufficientInputsProperty().addListener((observable, oldValue, newValue) -> {
+            amountStatus.setVisible(newValue);
         });
 
         Optional<Tab> firstTab = sendController.getPaymentTabs().getTabs().stream().findFirst();
@@ -175,6 +187,10 @@ public class PaymentController extends WalletFormController implements Initializ
         }
     }
 
+    private boolean isValidAddressAndLabel() {
+        return isValidRecipientAddress() && !label.getText().isEmpty();
+    }
+
     private Address getRecipientAddress() throws InvalidAddressException {
         return Address.fromString(address.getText());
     }
@@ -209,7 +225,7 @@ public class PaymentController extends WalletFormController implements Initializ
         }
 
         TransactionOutput txOutput = new TransactionOutput(new Transaction(), 1L, address.getOutputScript());
-        return address.getScriptType().getDustThreshold(txOutput, sendController.getFeeRate());
+        return address.getScriptType().getDustThreshold(txOutput, Transaction.DUST_RELAY_TX_FEE);
     }
 
     private void setFiatAmount(CurrencyRate currencyRate, Long amount) {
@@ -225,8 +241,10 @@ public class PaymentController extends WalletFormController implements Initializ
     private void revalidate(TextField field, ChangeListener<String> listener) {
         field.textProperty().removeListener(listener);
         String amt = field.getText();
+        int caret = field.getCaretPosition();
         field.setText(amt + "0");
         field.setText(amt);
+        field.positionCaret(caret);
         field.textProperty().addListener(listener);
     }
 
@@ -260,11 +278,15 @@ public class PaymentController extends WalletFormController implements Initializ
 
     public void setPayment(Payment payment) {
         if(getRecipientValueSats() == null || payment.getAmount() != getRecipientValueSats()) {
-            address.setText(payment.getAddress().toString());
-            if(payment.getLabel() != null) {
+            if(payment.getAddress() != null) {
+                address.setText(payment.getAddress().toString());
+            }
+            if(payment.getLabel() != null && !label.getText().equals(payment.getLabel())) {
                 label.setText(payment.getLabel());
             }
-            setRecipientValueSats(payment.getAmount());
+            if(payment.getAmount() >= 0) {
+                setRecipientValueSats(payment.getAmount());
+            }
             setFiatAmount(AppServices.getFiatCurrencyExchangeRate(), payment.getAmount());
         }
     }
@@ -279,6 +301,8 @@ public class PaymentController extends WalletFormController implements Initializ
 
         fiatAmount.setText("");
         setSendMax(false);
+
+        amountStatus.setVisible(false);
     }
 
     public void setMaxInput(ActionEvent event) {
@@ -313,6 +337,9 @@ public class PaymentController extends WalletFormController implements Initializ
             QRScanDialog.Result result = optionalResult.get();
             if(result.uri != null) {
                 updateFromURI(result.uri);
+            } else if(result.exception != null) {
+                log.error("Error scanning QR", result.exception);
+                showErrorDialog("Error scanning QR", result.exception.getMessage());
             }
         }
     }

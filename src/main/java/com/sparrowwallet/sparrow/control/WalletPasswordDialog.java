@@ -45,6 +45,7 @@ public class WalletPasswordDialog extends Dialog<SecureString> {
         dialogPane.getButtonTypes().addAll(ButtonType.CANCEL);
         dialogPane.setPrefWidth(380);
         dialogPane.setPrefHeight(260);
+        AppServices.moveToActiveWindowScreen(this);
 
         Glyph lock = new Glyph("FontAwesome", FontAwesome.Glyph.LOCK);
         lock.setFontSize(50);
@@ -76,8 +77,8 @@ public class WalletPasswordDialog extends Dialog<SecureString> {
 
         ValidationSupport validationSupport = new ValidationSupport();
         Platform.runLater( () -> {
-            validationSupport.registerValidator(passwordConfirm, (Control c, String newValue) -> ValidationResult.fromErrorIf(c, "Password confirmation does not match", !passwordConfirm.getText().equals(password.getText())));
             validationSupport.setValidationDecorator(new StyleClassValidationDecoration());
+            validationSupport.registerValidator(passwordConfirm, (Control c, String newValue) -> ValidationResult.fromErrorIf(c, "Password confirmation does not match", !passwordConfirm.getText().equals(password.getText())));
         });
 
         okButtonType = new javafx.scene.control.ButtonType(requirement.okButtonText, ButtonBar.ButtonData.OK_DONE);

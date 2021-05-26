@@ -4,6 +4,7 @@ import com.sparrowwallet.drongo.KeyPurpose;
 import com.sparrowwallet.drongo.Utils;
 import com.sparrowwallet.drongo.address.Address;
 import com.sparrowwallet.drongo.protocol.Transaction;
+import com.sparrowwallet.drongo.protocol.TransactionInput;
 import com.sparrowwallet.drongo.protocol.TransactionOutput;
 import com.sparrowwallet.drongo.wallet.*;
 import com.sparrowwallet.sparrow.AppServices;
@@ -72,9 +73,7 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
 
                 HBox actionBox = new HBox();
                 Button viewTransactionButton = new Button("");
-                Glyph searchGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.SEARCH);
-                searchGlyph.setFontSize(12);
-                viewTransactionButton.setGraphic(searchGlyph);
+                viewTransactionButton.setGraphic(getViewTransactionGlyph());
                 viewTransactionButton.setOnAction(event -> {
                     EventManager.get().post(new ViewTransactionEvent(this.getScene().getWindow(), transactionEntry.getBlockTransaction()));
                 });
@@ -83,13 +82,20 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
                 BlockTransaction blockTransaction = transactionEntry.getBlockTransaction();
                 if(blockTransaction.getHeight() <= 0 && blockTransaction.getTransaction().isReplaceByFee() && transactionEntry.getWallet().allInputsFromWallet(blockTransaction.getHash())) {
                     Button increaseFeeButton = new Button("");
-                    Glyph increaseFeeGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.HAND_HOLDING_MEDICAL);
-                    increaseFeeGlyph.setFontSize(12);
-                    increaseFeeButton.setGraphic(increaseFeeGlyph);
+                    increaseFeeButton.setGraphic(getIncreaseFeeRBFGlyph());
                     increaseFeeButton.setOnAction(event -> {
                         increaseFee(transactionEntry);
                     });
                     actionBox.getChildren().add(increaseFeeButton);
+                }
+
+                if(blockTransaction.getHeight() <= 0 && containsWalletOutputs(transactionEntry)) {
+                    Button cpfpButton = new Button("");
+                    cpfpButton.setGraphic(getIncreaseFeeCPFPGlyph());
+                    cpfpButton.setOnAction(event -> {
+                        createCpfp(transactionEntry);
+                    });
+                    actionBox.getChildren().add(cpfpButton);
                 }
 
                 setGraphic(actionBox);
@@ -97,7 +103,7 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
                 NodeEntry nodeEntry = (NodeEntry)entry;
                 Address address = nodeEntry.getAddress();
                 setText(address.toString());
-                setContextMenu(new AddressContextMenu(address, nodeEntry.getOutputDescriptor(), null));
+                setContextMenu(new AddressContextMenu(address, nodeEntry.getOutputDescriptor(), nodeEntry));
                 Tooltip tooltip = new Tooltip();
                 tooltip.setText(nodeEntry.getNode().getDerivationPath().replace("m", ".."));
                 setTooltip(tooltip);
@@ -105,9 +111,7 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
 
                 HBox actionBox = new HBox();
                 Button receiveButton = new Button("");
-                Glyph receiveGlyph = new Glyph("FontAwesome", FontAwesome.Glyph.ARROW_DOWN);
-                receiveGlyph.setFontSize(12);
-                receiveButton.setGraphic(receiveGlyph);
+                receiveButton.setGraphic(getReceiveGlyph());
                 receiveButton.setOnAction(event -> {
                     EventManager.get().post(new ReceiveActionEvent(nodeEntry));
                     Platform.runLater(() -> EventManager.get().post(new ReceiveToEvent(nodeEntry)));
@@ -115,11 +119,9 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
                 actionBox.getChildren().add(receiveButton);
 
                 if(nodeEntry.getWallet().getKeystores().size() == 1 &&
-                        (nodeEntry.getWallet().getKeystores().get(0).hasSeed() || nodeEntry.getWallet().getKeystores().get(0).getSource() == KeystoreSource.HW_USB)) {
+                        (nodeEntry.getWallet().getKeystores().get(0).hasPrivateKey() || nodeEntry.getWallet().getKeystores().get(0).getSource() == KeystoreSource.HW_USB)) {
                     Button signMessageButton = new Button("");
-                    Glyph signMessageGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.PEN_FANCY);
-                    signMessageGlyph.setFontSize(12);
-                    signMessageButton.setGraphic(signMessageGlyph);
+                    signMessageButton.setGraphic(getSignMessageGlyph());
                     signMessageButton.setOnAction(event -> {
                         MessageSignDialog messageSignDialog = new MessageSignDialog(nodeEntry.getWallet(), nodeEntry.getNode());
                         messageSignDialog.showAndWait();
@@ -139,9 +141,7 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
 
                 HBox actionBox = new HBox();
                 Button viewTransactionButton = new Button("");
-                Glyph searchGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.SEARCH);
-                searchGlyph.setFontSize(12);
-                viewTransactionButton.setGraphic(searchGlyph);
+                viewTransactionButton.setGraphic(getViewTransactionGlyph());
                 viewTransactionButton.setOnAction(event -> {
                     EventManager.get().post(new ViewTransactionEvent(this.getScene().getWindow(), hashIndexEntry.getBlockTransaction(), hashIndexEntry));
                 });
@@ -149,9 +149,7 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
 
                 if(hashIndexEntry.getType().equals(HashIndexEntry.Type.OUTPUT) && hashIndexEntry.isSpendable() && !hashIndexEntry.getHashIndex().isSpent()) {
                     Button spendUtxoButton = new Button("");
-                    Glyph sendGlyph = new Glyph("FontAwesome", FontAwesome.Glyph.SEND);
-                    sendGlyph.setFontSize(12);
-                    spendUtxoButton.setGraphic(sendGlyph);
+                    spendUtxoButton.setGraphic(getSendGlyph());
                     spendUtxoButton.setOnAction(event -> {
                         sendSelectedUtxos(getTreeTableView(), hashIndexEntry);
                     });
@@ -171,6 +169,7 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
                 .map(e -> (HashIndexEntry)e)
                 .filter(e -> e.getType().equals(HashIndexEntry.Type.INPUT) && e.isSpendable())
                 .map(e -> blockTransaction.getTransaction().getInputs().get((int)e.getHashIndex().getIndex()))
+                .filter(TransactionInput::isReplaceByFeeEnabled)
                 .map(txInput -> walletTxos.keySet().stream().filter(txo -> txo.getHash().equals(txInput.getOutpoint().getHash()) && txo.getIndex() == txInput.getOutpoint().getIndex()).findFirst().get())
                 .collect(Collectors.toList());
 
@@ -238,11 +237,42 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
     }
 
     private static Double getMaxFeeRate() {
-        if(AppServices.getTargetBlockFeeRates().isEmpty()) {
+        if(AppServices.getTargetBlockFeeRates() == null || AppServices.getTargetBlockFeeRates().isEmpty()) {
             return 100.0;
         }
 
         return AppServices.getTargetBlockFeeRates().values().iterator().next();
+    }
+
+    private static void createCpfp(TransactionEntry transactionEntry) {
+        BlockTransaction blockTransaction = transactionEntry.getBlockTransaction();
+        List<BlockTransactionHashIndex> ourOutputs = transactionEntry.getChildren().stream()
+                .filter(e -> e instanceof HashIndexEntry)
+                .map(e -> (HashIndexEntry)e)
+                .filter(e -> e.getType().equals(HashIndexEntry.Type.OUTPUT))
+                .map(HashIndexEntry::getHashIndex)
+                .collect(Collectors.toList());
+
+        if(ourOutputs.isEmpty()) {
+            throw new IllegalStateException("Cannot create CPFP without any wallet outputs to spend");
+        }
+
+        BlockTransactionHashIndex utxo = ourOutputs.get(0);
+
+        WalletNode freshNode = transactionEntry.getWallet().getFreshNode(transactionEntry.getWallet().getReceiveChain());
+        String label = transactionEntry.getLabel() == null ? "" : transactionEntry.getLabel();
+        label += (label.isEmpty() ? "" : " ") + "(CPFP)";
+        Payment payment = new Payment(transactionEntry.getWallet().getAddress(freshNode), label, utxo.getValue(), true);
+
+        EventManager.get().post(new SendActionEvent(transactionEntry.getWallet(), List.of(utxo)));
+        Platform.runLater(() -> EventManager.get().post(new SpendUtxoEvent(transactionEntry.getWallet(), List.of(utxo), List.of(payment), blockTransaction.getFee(), false)));
+    }
+
+    private static boolean containsWalletOutputs(TransactionEntry transactionEntry) {
+        return transactionEntry.getChildren().stream()
+                .filter(e -> e instanceof HashIndexEntry)
+                .map(e -> (HashIndexEntry)e)
+                .anyMatch(e -> e.getType().equals(HashIndexEntry.Type.OUTPUT));
     }
 
     private static void sendSelectedUtxos(TreeTableView<Entry> treeTableView, HashIndexEntry hashIndexEntry) {
@@ -272,9 +302,93 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
         EventManager.get().post(new WalletUtxoStatusChangedEvent(hashIndexEntry.getWallet(), hashIndexEntry.getHashIndex()));
     }
 
+    private static Glyph getViewTransactionGlyph() {
+        Glyph searchGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.SEARCH);
+        searchGlyph.setFontSize(12);
+        return searchGlyph;
+    }
+
+    private static Glyph getIncreaseFeeRBFGlyph() {
+        Glyph increaseFeeGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.HAND_HOLDING_MEDICAL);
+        increaseFeeGlyph.setFontSize(12);
+        return increaseFeeGlyph;
+    }
+
+    private static Glyph getIncreaseFeeCPFPGlyph() {
+        Glyph cpfpGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.SIGN_OUT_ALT);
+        cpfpGlyph.setFontSize(12);
+        return cpfpGlyph;
+    }
+
+    private static Glyph getReceiveGlyph() {
+        Glyph receiveGlyph = new Glyph("FontAwesome", FontAwesome.Glyph.ARROW_DOWN);
+        receiveGlyph.setFontSize(12);
+        return receiveGlyph;
+    }
+
+    private static Glyph getSignMessageGlyph() {
+        Glyph signMessageGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.PEN_FANCY);
+        signMessageGlyph.setFontSize(12);
+        return signMessageGlyph;
+    }
+
+    private static Glyph getSendGlyph() {
+        Glyph sendGlyph = new Glyph("FontAwesome", FontAwesome.Glyph.SEND);
+        sendGlyph.setFontSize(12);
+        return sendGlyph;
+    }
+
+    private static Glyph getCopyGlyph() {
+        Glyph copyGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.COPY);
+        copyGlyph.setFontSize(12);
+        return copyGlyph;
+    }
+
+    private static Glyph getFreezeGlyph() {
+        Glyph copyGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.SNOWFLAKE);
+        copyGlyph.setFontSize(12);
+        return copyGlyph;
+    }
+
+    private static Glyph getUnfreezeGlyph() {
+        Glyph copyGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.SUN);
+        copyGlyph.setFontSize(12);
+        return copyGlyph;
+    }
+
     private static class UnconfirmedTransactionContextMenu extends ContextMenu {
         public UnconfirmedTransactionContextMenu(TransactionEntry transactionEntry) {
             BlockTransaction blockTransaction = transactionEntry.getBlockTransaction();
+            MenuItem viewTransaction = new MenuItem("View Transaction");
+            viewTransaction.setGraphic(getViewTransactionGlyph());
+            viewTransaction.setOnAction(AE -> {
+                hide();
+                EventManager.get().post(new ViewTransactionEvent(this.getOwnerWindow(), blockTransaction));
+            });
+            getItems().add(viewTransaction);
+
+            if(blockTransaction.getTransaction().isReplaceByFee() && transactionEntry.getWallet().allInputsFromWallet(blockTransaction.getHash())) {
+                MenuItem increaseFee = new MenuItem("Increase Fee (RBF)");
+                increaseFee.setGraphic(getIncreaseFeeRBFGlyph());
+                increaseFee.setOnAction(AE -> {
+                    hide();
+                    increaseFee(transactionEntry);
+                });
+
+                getItems().add(increaseFee);
+            }
+
+            if(containsWalletOutputs(transactionEntry)) {
+                MenuItem createCpfp = new MenuItem("Increase Effective Fee (CPFP)");
+                createCpfp.setGraphic(getIncreaseFeeCPFPGlyph());
+                createCpfp.setOnAction(AE -> {
+                    hide();
+                    createCpfp(transactionEntry);
+                });
+
+                getItems().add(createCpfp);
+            }
+
             MenuItem copyTxid = new MenuItem("Copy Transaction ID");
             copyTxid.setOnAction(AE -> {
                 hide();
@@ -284,21 +398,18 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
             });
 
             getItems().add(copyTxid);
-
-            if(blockTransaction.getTransaction().isReplaceByFee() && transactionEntry.getWallet().allInputsFromWallet(blockTransaction.getHash())) {
-                MenuItem increaseFee = new MenuItem("Increase Fee");
-                increaseFee.setOnAction(AE -> {
-                    hide();
-                    increaseFee(transactionEntry);
-                });
-
-                getItems().add(increaseFee);
-            }
         }
     }
 
     private static class TransactionContextMenu extends ContextMenu {
         public TransactionContextMenu(String date, BlockTransaction blockTransaction) {
+            MenuItem viewTransaction = new MenuItem("View Transaction");
+            viewTransaction.setGraphic(getViewTransactionGlyph());
+            viewTransaction.setOnAction(AE -> {
+                hide();
+                EventManager.get().post(new ViewTransactionEvent(this.getOwnerWindow(), blockTransaction));
+            });
+
             MenuItem copyDate = new MenuItem("Copy Date");
             copyDate.setOnAction(AE -> {
                 hide();
@@ -323,12 +434,32 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
                 Clipboard.getSystemClipboard().setContent(content);
             });
 
-            getItems().addAll(copyDate, copyTxid, copyHeight);
+            getItems().addAll(viewTransaction, copyDate, copyTxid, copyHeight);
         }
     }
 
     public static class AddressContextMenu extends ContextMenu {
         public AddressContextMenu(Address address, String outputDescriptor, NodeEntry nodeEntry) {
+            MenuItem receiveToAddress = new MenuItem("Receive To");
+            receiveToAddress.setGraphic(getReceiveGlyph());
+            receiveToAddress.setOnAction(event -> {
+                hide();
+                EventManager.get().post(new ReceiveActionEvent(nodeEntry));
+                Platform.runLater(() -> EventManager.get().post(new ReceiveToEvent(nodeEntry)));
+            });
+            getItems().add(receiveToAddress);
+
+            if(nodeEntry != null) {
+                MenuItem signVerifyMessage = new MenuItem("Sign/Verify Message");
+                signVerifyMessage.setGraphic(getSignMessageGlyph());
+                signVerifyMessage.setOnAction(AE -> {
+                    hide();
+                    MessageSignDialog messageSignDialog = new MessageSignDialog(nodeEntry.getWallet(), nodeEntry.getNode());
+                    messageSignDialog.showAndWait();
+                });
+                getItems().add(signVerifyMessage);
+            }
+
             MenuItem copyAddress = new MenuItem("Copy Address");
             copyAddress.setOnAction(AE -> {
                 hide();
@@ -354,34 +485,22 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
             });
 
             getItems().addAll(copyAddress, copyHex, copyOutputDescriptor);
-
-            if(nodeEntry != null) {
-                MenuItem signVerifyMessage = new MenuItem("Sign/Verify Message");
-                signVerifyMessage.setOnAction(AE -> {
-                    hide();
-                    MessageSignDialog messageSignDialog = new MessageSignDialog(nodeEntry.getWallet(), nodeEntry.getNode());
-                    messageSignDialog.showAndWait();
-                });
-
-                getItems().add(signVerifyMessage);
-            }
         }
     }
 
     private static class HashIndexEntryContextMenu extends ContextMenu {
         public HashIndexEntryContextMenu(TreeTableView<Entry> treeTableView, HashIndexEntry hashIndexEntry) {
-            String label = "Copy " + (hashIndexEntry.getType().equals(HashIndexEntry.Type.OUTPUT) ? "Transaction Output" : "Transaction Input");
-            MenuItem copyHashIndex = new MenuItem(label);
-            copyHashIndex.setOnAction(AE -> {
+            MenuItem viewTransaction = new MenuItem("View Transaction");
+            viewTransaction.setGraphic(getViewTransactionGlyph());
+            viewTransaction.setOnAction(AE -> {
                 hide();
-                ClipboardContent content = new ClipboardContent();
-                content.putString(hashIndexEntry.getHashIndex().toString());
-                Clipboard.getSystemClipboard().setContent(content);
+                EventManager.get().post(new ViewTransactionEvent(this.getOwnerWindow(), hashIndexEntry.getBlockTransaction()));
             });
-            getItems().add(copyHashIndex);
+            getItems().add(viewTransaction);
 
             if(hashIndexEntry.getType().equals(HashIndexEntry.Type.OUTPUT) && hashIndexEntry.isSpendable() && !hashIndexEntry.getHashIndex().isSpent()) {
                 MenuItem sendSelected = new MenuItem("Send Selected");
+                sendSelected.setGraphic(getSendGlyph());
                 sendSelected.setOnAction(AE -> {
                     hide();
                     sendSelectedUtxos(treeTableView, hashIndexEntry);
@@ -392,6 +511,7 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
             if(hashIndexEntry.getType().equals(HashIndexEntry.Type.OUTPUT) && !hashIndexEntry.getHashIndex().isSpent()) {
                 if(hashIndexEntry.getHashIndex().getStatus() == null || hashIndexEntry.getHashIndex().getStatus() != Status.FROZEN) {
                     MenuItem freezeUtxo = new MenuItem("Freeze UTXO");
+                    freezeUtxo.setGraphic(getFreezeGlyph());
                     freezeUtxo.setOnAction(AE -> {
                         hide();
                         freezeUtxo(hashIndexEntry);
@@ -399,6 +519,7 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
                     getItems().add(freezeUtxo);
                 } else {
                     MenuItem unfreezeUtxo = new MenuItem("Unfreeze UTXO");
+                    unfreezeUtxo.setGraphic(getUnfreezeGlyph());
                     unfreezeUtxo.setOnAction(AE -> {
                         hide();
                         unfreezeUtxo(hashIndexEntry);
@@ -406,6 +527,16 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
                     getItems().add(unfreezeUtxo);
                 }
             }
+
+            String label = "Copy " + (hashIndexEntry.getType().equals(HashIndexEntry.Type.OUTPUT) ? "Transaction Output" : "Transaction Input");
+            MenuItem copyHashIndex = new MenuItem(label);
+            copyHashIndex.setOnAction(AE -> {
+                hide();
+                ClipboardContent content = new ClipboardContent();
+                content.putString(hashIndexEntry.getHashIndex().toString());
+                Clipboard.getSystemClipboard().setContent(content);
+            });
+            getItems().add(copyHashIndex);
         }
     }
 
@@ -416,6 +547,7 @@ public class EntryCell extends TreeTableCell<Entry, Entry> {
         cell.getStyleClass().remove("address-cell");
         cell.getStyleClass().remove("hashindex-row");
         cell.getStyleClass().remove("confirming");
+        cell.getStyleClass().remove("negative-amount");
         cell.getStyleClass().remove("spent");
         cell.getStyleClass().remove("unspendable");
 

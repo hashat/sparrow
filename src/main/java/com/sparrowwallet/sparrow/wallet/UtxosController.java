@@ -16,6 +16,7 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.control.Button;
+import javafx.scene.control.Tooltip;
 
 import java.net.URL;
 import java.util.List;
@@ -44,12 +45,16 @@ public class UtxosController extends WalletFormController implements Initializab
         utxosTable.initialize(getWalletForm().getWalletUtxosEntry());
         utxosChart.initialize(getWalletForm().getWalletUtxosEntry());
         sendSelected.setDisable(true);
+        sendSelected.setTooltip(new Tooltip("Send selected UTXOs. Use " + (org.controlsfx.tools.Platform.getCurrent() == org.controlsfx.tools.Platform.OSX ? "Cmd" : "Ctrl") + "+click to select multiple." ));
 
         utxosTable.getSelectionModel().getSelectedIndices().addListener((ListChangeListener<Integer>) c -> {
             List<Entry> selectedEntries = utxosTable.getSelectionModel().getSelectedCells().stream().map(tp -> tp.getTreeItem().getValue()).collect(Collectors.toList());
             utxosChart.select(selectedEntries);
             updateSendSelected(Config.get().getBitcoinUnit());
         });
+
+        utxosChart.managedProperty().bind(utxosChart.visibleProperty());
+        utxosChart.setVisible(Config.get().isShowUtxosChart());
     }
 
     private void updateSendSelected(BitcoinUnit unit) {
@@ -114,9 +119,11 @@ public class UtxosController extends WalletFormController implements Initializab
     }
 
     @Subscribe
-    public void walletEntryLabelChanged(WalletEntryLabelChangedEvent event) {
+    public void walletEntryLabelChanged(WalletEntryLabelsChangedEvent event) {
         if(event.getWallet().equals(walletForm.getWallet())) {
-            utxosTable.updateLabel(event.getEntry());
+            for(Entry entry : event.getEntries()) {
+                utxosTable.updateLabel(entry);
+            }
             utxosChart.update(getWalletForm().getWalletUtxosEntry());
         }
     }
@@ -159,5 +166,15 @@ public class UtxosController extends WalletFormController implements Initializab
         if(event.getWallet().equals(getWalletForm().getWallet())) {
             utxosTable.refresh();
         }
+    }
+
+    @Subscribe
+    public void includeMempoolOutputsChangedEvent(IncludeMempoolOutputsChangedEvent event) {
+        utxosTable.refresh();
+    }
+
+    @Subscribe
+    public void utxosChartChanged(UtxosChartChangedEvent event) {
+        utxosChart.setVisible(event.isVisible());
     }
 }

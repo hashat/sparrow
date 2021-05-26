@@ -10,9 +10,7 @@ import com.sparrowwallet.drongo.address.Address;
 import com.sparrowwallet.drongo.crypto.*;
 import com.sparrowwallet.drongo.policy.Policy;
 import com.sparrowwallet.drongo.policy.PolicyType;
-import com.sparrowwallet.drongo.protocol.ScriptType;
-import com.sparrowwallet.drongo.protocol.Sha256Hash;
-import com.sparrowwallet.drongo.protocol.Transaction;
+import com.sparrowwallet.drongo.protocol.*;
 import com.sparrowwallet.drongo.wallet.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -233,6 +231,22 @@ public class Electrum implements KeystoreFileImport, WalletImport, WalletExport 
                                     }
                                 }
                             }
+
+                            for(BlockTransaction blkTx : ew.transactions.values()) {
+                                if(blkTx.getLabel() == null) {
+                                    Transaction tx = blkTx.getTransaction();
+                                    for(TransactionOutput txOutput : tx.getOutputs()) {
+                                        try {
+                                            Address[] addresses = txOutput.getScript().getToAddresses();
+                                            if(Arrays.asList(addresses).contains(address)) {
+                                                blkTx.setLabel(ew.labels.get(key));
+                                            }
+                                        } catch(NonStandardScriptException ex) {
+                                            //ignore
+                                        }
+                                    }
+                                }
+                            }
                         } catch(Exception ex) {
                             //not an address
                         }
@@ -314,11 +328,11 @@ public class Electrum implements KeystoreFileImport, WalletImport, WalletExport 
                     ek.xpub = keystore.getExtendedPublicKey().toString(xpubHeader);
                     ek.xprv = keystore.getExtendedPrivateKey().toString(xprvHeader);
                     ek.pw_hash_version = 1;
-                    if(keystore.getSeed().getType() == DeterministicSeed.Type.ELECTRUM) {
+                    if(keystore.getSeed() == null || keystore.getSeed().getType() == DeterministicSeed.Type.BIP39) {
+                        ew.seed_type = "bip39";
+                    } else if(keystore.getSeed().getType() == DeterministicSeed.Type.ELECTRUM) {
                         ek.seed = keystore.getSeed().getMnemonicString().asString();
                         ek.passphrase = keystore.getSeed().getPassphrase() == null ? null : keystore.getSeed().getPassphrase().asString();
-                    } else if(keystore.getSeed().getType() == DeterministicSeed.Type.BIP39) {
-                        ew.seed_type = "bip39";
                     }
                     ew.use_encryption = false;
                 } else if(keystore.getSource() == KeystoreSource.SW_WATCH) {
@@ -353,7 +367,6 @@ public class Electrum implements KeystoreFileImport, WalletImport, WalletExport 
             String json = gson.toJson(eJson);
             outputStream.write(json.getBytes(StandardCharsets.UTF_8));
             outputStream.flush();
-            outputStream.close();
         } catch (Exception e) {
             log.error("Error exporting Electrum Wallet", e);
             throw new ExportException("Error exporting Electrum Wallet", e);

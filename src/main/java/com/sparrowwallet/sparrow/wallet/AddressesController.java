@@ -69,10 +69,12 @@ public class AddressesController extends WalletFormController implements Initial
     }
 
     @Subscribe
-    public void walletEntryLabelChanged(WalletEntryLabelChangedEvent event) {
+    public void walletEntryLabelChanged(WalletEntryLabelsChangedEvent event) {
         if(event.getWallet().equals(walletForm.getWallet())) {
-            receiveTable.updateLabel(event.getEntry());
-            changeTable.updateLabel(event.getEntry());
+            for(Entry entry : event.getEntries()) {
+                receiveTable.updateLabel(entry);
+                changeTable.updateLabel(entry);
+            }
         }
     }
 
@@ -118,6 +120,7 @@ public class AddressesController extends WalletFormController implements Initial
         WalletNode purposeNode = copy.getNode(keyPurpose);
         purposeNode.fillToIndex(Math.max(purposeNode.getChildren().size(), DEFAULT_EXPORT_ADDRESSES_LENGTH));
 
+        AppServices.moveToActiveWindowScreen(window, 800, 450);
         File file = fileChooser.showSaveDialog(window);
         if(file != null) {
             try(FileOutputStream outputStream = new FileOutputStream(file)) {

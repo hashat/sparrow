@@ -21,7 +21,7 @@
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.3.2</string>
+  <string>1.4.1</string>
   <key>CFBundleSignature</key>
   <string>????</string>
   <!-- See https://developer.apple.com/app-store/categories/ for list of AppStore categories -->
@@ -35,5 +35,88 @@
   <string>true</string>
   <key>NSCameraUsageDescription</key>
   <string>Sparrow requires access to the camera in order to scan QR codes</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+      <dict>
+          <key>CFBundleURLName</key>
+          <string>com.sparrowwallet.sparrow.bitcoin</string>
+          <key>CFBundleURLSchemes</key>
+          <array>
+            <string>bitcoin</string>
+          </array>
+      </dict>
+      <dict>
+          <key>CFBundleURLName</key>
+          <string>com.sparrowwallet.sparrow.aopp</string>
+          <key>CFBundleURLSchemes</key>
+          <array>
+            <string>aopp</string>
+          </array>
+      </dict>
+  </array>
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+      <dict>
+          <key>UTTypeIdentifier</key>
+          <string>org.bitcoin.psbt</string>
+          <key>UTTypeTagSpecification</key>
+          <dict>
+              <key>public.filename-extension</key>
+              <array>
+                  <string>psbt</string>
+              </array>
+          </dict>
+          <key>UTTypeDescription</key>
+          <string>Partially Signed Bitcoin Transaction</string>
+          <key>UTTypeIconFile</key>
+          <string>sparrow.icns</string>
+      </dict>
+      <dict>
+          <key>UTTypeIdentifier</key>
+          <string>org.bitcoin.txn</string>
+          <key>UTTypeTagSpecification</key>
+          <dict>
+              <key>public.filename-extension</key>
+              <array>
+                  <string>txn</string>
+              </array>
+          </dict>
+          <key>UTTypeDescription</key>
+          <string>Bitcoin Transaction</string>
+          <key>UTTypeIconFile</key>
+          <string>sparrow.icns</string>
+      </dict>
+  </array>
+ <key>CFBundleDocumentTypes</key>
+ <array>
+     <dict>
+        <key>CFBundleTypeRole</key>
+        <string>Editor</string>
+        <key>CFBundleTypeIconFile</key>
+        <string>sparrow.icns</string>
+        <key>CFBundleTypeExtensions</key>
+        <array>
+            <string>psbt</string>
+        </array>
+        <key>CFBundleTypeName</key>
+        <string>Partially Signed Bitcoin Transaction</string>
+        <key>LSHandlerRank</key>
+        <string>Default</string>
+     </dict>
+     <dict>
+        <key>CFBundleTypeRole</key>
+        <string>Editor</string>
+        <key>CFBundleTypeIconFile</key>
+        <string>sparrow.icns</string>
+        <key>CFBundleTypeExtensions</key>
+        <array>
+            <string>txn</string>
+        </array>
+        <key>CFBundleTypeName</key>
+        <string>Bitcoin Transaction</string>
+        <key>LSHandlerRank</key>
+        <string>Default</string>
+     </dict>
+ </array>
  </dict>
 </plist>

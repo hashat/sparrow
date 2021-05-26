@@ -7,7 +7,8 @@ import com.sparrowwallet.drongo.wallet.Status;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.control.DateLabel;
-import com.sparrowwallet.sparrow.event.WalletEntryLabelChangedEvent;
+import com.sparrowwallet.sparrow.event.WalletEntryLabelsChangedEvent;
+import com.sparrowwallet.sparrow.io.Config;
 
 import java.util.Collections;
 import java.util.List;
@@ -26,7 +27,7 @@ public class HashIndexEntry extends Entry implements Comparable<HashIndexEntry> 
 
         labelProperty().addListener((observable, oldValue, newValue) -> {
             hashIndex.setLabel(newValue);
-            EventManager.get().post(new WalletEntryLabelChangedEvent(wallet, this));
+            EventManager.get().post(new WalletEntryLabelsChangedEvent(wallet, this));
         });
     }
 
@@ -58,7 +59,7 @@ public class HashIndexEntry extends Entry implements Comparable<HashIndexEntry> 
     }
 
     public boolean isSpendable() {
-        return !isSpent() && (hashIndex.getHeight() > 0 || getWallet().allInputsFromWallet(hashIndex.getHash())) && (hashIndex.getStatus() == null || hashIndex.getStatus() != Status.FROZEN);
+        return !isSpent() && (hashIndex.getHeight() > 0 || Config.get().isIncludeMempoolOutputs()) && (hashIndex.getStatus() == null || hashIndex.getStatus() != Status.FROZEN);
     }
 
     @Override

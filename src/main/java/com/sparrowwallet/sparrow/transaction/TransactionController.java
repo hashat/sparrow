@@ -270,7 +270,7 @@ public class TransactionController implements Initializable {
         });
 
         if(initialView != null) {
-            setTreeSelection(initialView, initialIndex);
+            Platform.runLater(() -> setTreeSelection(initialView, initialIndex));
         } else {
             txtree.getSelectionModel().select(txtree.getRoot());
         }
@@ -531,6 +531,7 @@ public class TransactionController implements Initializable {
         if(event.getPsbt().equals(getPSBT())) {
             txhex.setTransaction(getTransaction());
             highlightTxHex();
+            txtree.refresh();
         }
     }
 

@@ -1,8 +1,7 @@
 package com.sparrowwallet.sparrow.wallet;
 
 import com.google.common.eventbus.Subscribe;
-import com.sparrowwallet.drongo.OutputDescriptor;
-import com.sparrowwallet.drongo.SecureString;
+import com.sparrowwallet.drongo.*;
 import com.sparrowwallet.drongo.crypto.*;
 import com.sparrowwallet.drongo.policy.Policy;
 import com.sparrowwallet.drongo.policy.PolicyType;
@@ -12,6 +11,8 @@ import com.sparrowwallet.drongo.wallet.Keystore;
 import com.sparrowwallet.drongo.wallet.KeystoreSource;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.drongo.wallet.WalletModel;
+import com.sparrowwallet.hummingbird.UR;
+import com.sparrowwallet.hummingbird.registry.*;
 import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.control.*;
@@ -45,6 +46,12 @@ public class SettingsController extends WalletFormController implements Initiali
 
     @FXML
     private DescriptorArea descriptor;
+
+    @FXML
+    private Button scanDescriptorQR;
+
+    @FXML
+    private Button showDescriptorQR;
 
     @FXML
     private ComboBox<ScriptType> scriptType;
@@ -184,6 +191,11 @@ public class SettingsController extends WalletFormController implements Initiali
         });
 
         initializeDescriptorField(descriptor);
+        scanDescriptorQR.managedProperty().bind(scanDescriptorQR.visibleProperty());
+        scanDescriptorQR.prefHeightProperty().bind(descriptor.prefHeightProperty());
+        showDescriptorQR.managedProperty().bind(showDescriptorQR.visibleProperty());
+        showDescriptorQR.prefHeightProperty().bind(descriptor.prefHeightProperty());
+        showDescriptorQR.visibleProperty().bind(scanDescriptorQR.visibleProperty().not());
 
         revert.setOnAction(event -> {
             keystoreTabs.getTabs().removeAll(keystoreTabs.getTabs());
@@ -239,6 +251,7 @@ public class SettingsController extends WalletFormController implements Initiali
             sortedMulti.getSelectionModel().select(walletForm.getWallet().getSortedMulti());
         }
 
+        scanDescriptorQR.setVisible(!walletForm.getWallet().isValid());
         export.setDisable(!walletForm.getWallet().isValid());
         revert.setDisable(true);
         apply.setDisable(true);
@@ -281,12 +294,76 @@ public class SettingsController extends WalletFormController implements Initiali
             QRScanDialog.Result result = optionalResult.get();
             if(result.outputDescriptor != null) {
                 setDescriptorText(result.outputDescriptor.toString());
+            } else if(result.wallets != null) {
+                for(Wallet wallet : result.wallets) {
+                    if(scriptType.getValue().equals(wallet.getScriptType()) && !wallet.getKeystores().isEmpty()) {
+                        OutputDescriptor outputDescriptor = OutputDescriptor.getOutputDescriptor(walletForm.getWallet());
+                        setDescriptorText(outputDescriptor.toString());
+                        break;
+                    }
+                }
             } else if(result.payload != null && !result.payload.isEmpty()) {
                 setDescriptorText(result.payload);
             } else if(result.exception != null) {
+                log.error("Error scanning QR", result.exception);
                 AppServices.showErrorDialog("Error scanning QR", result.exception.getMessage());
             }
         }
+    }
+
+    public void showDescriptorQR(ActionEvent event) {
+        if(!walletForm.getWallet().isValid()) {
+            AppServices.showErrorDialog("Wallet Invalid", "Cannot show a descriptor for an invalid wallet.");
+            return;
+        }
+
+        List<ScriptExpression> scriptExpressions = getScriptExpressions(walletForm.getWallet().getScriptType());
+
+        CryptoOutput cryptoOutput;
+        if(walletForm.getWallet().getPolicyType() == PolicyType.SINGLE) {
+            cryptoOutput = new CryptoOutput(scriptExpressions, getCryptoHDKey(walletForm.getWallet().getKeystores().get(0)));
+        } else if(walletForm.getWallet().getPolicyType() == PolicyType.MULTI) {
+            List<CryptoHDKey> cryptoHDKeys = walletForm.getWallet().getKeystores().stream().map(this::getCryptoHDKey).collect(Collectors.toList());
+            MultiKey multiKey = new MultiKey(walletForm.getWallet().getDefaultPolicy().getNumSignaturesRequired(), null, cryptoHDKeys);
+            List<ScriptExpression> multiScriptExpressions = new ArrayList<>(scriptExpressions);
+            multiScriptExpressions.add(ScriptExpression.SORTED_MULTISIG);
+            cryptoOutput = new CryptoOutput(multiScriptExpressions, multiKey);
+        } else {
+            AppServices.showErrorDialog("Unsupported Wallet Policy", "Cannot show a descriptor for this wallet.");
+            return;
+        }
+
+        UR cryptoOutputUR = cryptoOutput.toUR();
+        QRDisplayDialog qrDisplayDialog = new QRDisplayDialog(cryptoOutputUR);
+        qrDisplayDialog.showAndWait();
+    }
+
+    private List<ScriptExpression> getScriptExpressions(ScriptType scriptType) {
+        if(scriptType == ScriptType.P2PK) {
+            return List.of(ScriptExpression.PUBLIC_KEY);
+        } else if(scriptType == ScriptType.P2PKH) {
+            return List.of(ScriptExpression.PUBLIC_KEY_HASH);
+        } else if(scriptType == ScriptType.P2SH_P2WPKH) {
+            return List.of(ScriptExpression.SCRIPT_HASH, ScriptExpression.WITNESS_PUBLIC_KEY_HASH);
+        } else if(scriptType == ScriptType.P2WPKH) {
+            return List.of(ScriptExpression.WITNESS_PUBLIC_KEY_HASH);
+        } else if(scriptType == ScriptType.P2SH) {
+            return List.of(ScriptExpression.SCRIPT_HASH);
+        } else if(scriptType == ScriptType.P2SH_P2WSH) {
+            return List.of(ScriptExpression.SCRIPT_HASH, ScriptExpression.WITNESS_SCRIPT_HASH);
+        } else if(scriptType == ScriptType.P2WSH) {
+            return List.of(ScriptExpression.WITNESS_SCRIPT_HASH);
+        }
+
+        throw new IllegalArgumentException("Unknown script type of " + scriptType);
+    }
+
+    private CryptoHDKey getCryptoHDKey(Keystore keystore) {
+        ExtendedKey extendedKey = keystore.getExtendedPublicKey();
+        CryptoCoinInfo cryptoCoinInfo = new CryptoCoinInfo(CryptoCoinInfo.Type.BITCOIN.ordinal(), Network.get() == Network.MAINNET ? CryptoCoinInfo.Network.MAINNET.ordinal() : CryptoCoinInfo.Network.TESTNET.ordinal());
+        List<PathComponent> pathComponents = keystore.getKeyDerivation().getDerivation().stream().map(cNum -> new PathComponent(cNum.num(), cNum.isHardened())).collect(Collectors.toList());
+        CryptoKeypath cryptoKeypath = new CryptoKeypath(pathComponents, Utils.hexToBytes(keystore.getKeyDerivation().getMasterFingerprint()), pathComponents.size());
+        return new CryptoHDKey(false, extendedKey.getKey().getPubKey(), extendedKey.getKey().getChainCode(), cryptoCoinInfo, cryptoKeypath, null, extendedKey.getParentFingerprint());
     }
 
     public void editDescriptor(ActionEvent event) {
@@ -375,6 +452,7 @@ public class SettingsController extends WalletFormController implements Initiali
             revert.setDisable(false);
             apply.setDisable(!wallet.isValid());
             export.setDisable(true);
+            scanDescriptorQR.setVisible(!wallet.isValid());
         }
     }
 
@@ -382,6 +460,7 @@ public class SettingsController extends WalletFormController implements Initiali
     public void walletSettingsChanged(WalletSettingsChangedEvent event) {
         if(event.getWalletFile().equals(walletForm.getWalletFile())) {
             export.setDisable(!event.getWallet().isValid());
+            scanDescriptorQR.setVisible(!event.getWallet().isValid());
         }
     }
 

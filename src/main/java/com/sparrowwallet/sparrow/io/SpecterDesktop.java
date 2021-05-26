@@ -31,7 +31,6 @@ public class SpecterDesktop implements WalletImport, WalletExport {
             String json = gson.toJson(specterWallet);
             outputStream.write(json.getBytes(StandardCharsets.UTF_8));
             outputStream.flush();
-            outputStream.close();
         } catch(Exception e) {
             log.error("Error exporting Specter Desktop wallet", e);
             throw new ExportException("Error exporting Specter Desktop wallet", e);
@@ -50,7 +49,7 @@ public class SpecterDesktop implements WalletImport, WalletExport {
 
     @Override
     public String getWalletImportDescription() {
-        return "Import a Specter wallet created by using the Wallets > Settings > Export to Wallet Software in Specter Desktop";
+        return "Import a Specter wallet created by using the Wallets > Settings > Export to Wallet Software in Specter Desktop. Note Connected (USB) Hardware Wallets may need to be reimported separately as the export file may not contain this information.";
     }
 
     @Override

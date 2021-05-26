@@ -7,11 +7,10 @@ import com.google.zxing.client.j2se.MatrixToImageConfig;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import com.sparrowwallet.drongo.KeyDerivation;
 import com.sparrowwallet.drongo.KeyPurpose;
 import com.sparrowwallet.drongo.OutputDescriptor;
+import com.sparrowwallet.drongo.address.Address;
 import com.sparrowwallet.drongo.wallet.BlockTransactionHashIndex;
-import com.sparrowwallet.drongo.wallet.Keystore;
 import com.sparrowwallet.drongo.wallet.KeystoreSource;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.sparrow.AppServices;
@@ -21,15 +20,15 @@ import com.sparrowwallet.sparrow.event.*;
 import com.sparrowwallet.sparrow.glyphfont.FontAwesome5;
 import com.sparrowwallet.sparrow.io.Device;
 import com.sparrowwallet.sparrow.io.Hwi;
+import com.sparrowwallet.sparrow.net.Aopp;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.stage.Stage;
 import org.controlsfx.glyphfont.Glyph;
 import org.fxmisc.richtext.CodeArea;
 import org.slf4j.Logger;
@@ -40,10 +39,7 @@ import java.io.ByteArrayOutputStream;
 import java.net.URL;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.List;
-import java.util.Map;
-import java.util.ResourceBundle;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class ReceiveController extends WalletFormController implements Initializable {
@@ -88,6 +84,15 @@ public class ReceiveController extends WalletFormController implements Initializ
 
         displayAddress.managedProperty().bind(displayAddress.visibleProperty());
         displayAddress.setVisible(false);
+
+        qrCode.setOnMouseClicked(event -> {
+            if(currentEntry != null) {
+                QRDisplayDialog qrDisplayDialog = new QRDisplayDialog(currentEntry.getAddress().toString());
+                qrDisplayDialog.showAndWait();
+            }
+        });
+
+        refreshAddress();
     }
 
     public void setNodeEntry(NodeEntry nodeEntry) {
@@ -125,14 +130,19 @@ public class ReceiveController extends WalletFormController implements Initializ
         if(AppServices.isConnected() && currentOutputs.isEmpty()) {
             lastUsed.setText("Never");
             lastUsed.setGraphic(getUnusedGlyph());
+            address.getStyleClass().remove("error");
         } else if(!currentOutputs.isEmpty()) {
             long count = currentOutputs.size();
             BlockTransactionHashIndex lastUsedReference = currentOutputs.stream().skip(count - 1).findFirst().get();
             lastUsed.setText(lastUsedReference.getHeight() <= 0 ? "Unconfirmed Transaction" : DATE_FORMAT.format(lastUsedReference.getDate()));
             lastUsed.setGraphic(getWarningGlyph());
+            if(!address.getStyleClass().contains("error")) {
+                address.getStyleClass().add("error");
+            }
         } else {
             lastUsed.setText("Unknown");
-            lastUsed.setGraphic(null);
+            lastUsed.setGraphic(getUnknownGlyph());
+            address.getStyleClass().remove("error");
         }
     }
 
@@ -143,7 +153,7 @@ public class ReceiveController extends WalletFormController implements Initializ
 
         List<Device> addressDevices = devices.stream().filter(device -> walletFingerprints.contains(device.getFingerprint())).collect(Collectors.toList());
         if(addressDevices.isEmpty()) {
-            addressDevices = devices.stream().filter(device -> device.getNeedsPinSent() || device.getNeedsPassphraseSent()).collect(Collectors.toList());
+            addressDevices = devices.stream().filter(device -> device.isNeedsPinSent() || device.isNeedsPassphraseSent()).collect(Collectors.toList());
         }
 
         if(!addressDevices.isEmpty()) {
@@ -181,6 +191,10 @@ public class ReceiveController extends WalletFormController implements Initializ
     }
 
     public void getNewAddress(ActionEvent event) {
+        refreshAddress();
+    }
+
+    public void refreshAddress() {
         NodeEntry freshEntry = getWalletForm().getFreshNodeEntry(getWalletForm().getWallet().getReceiveChain(), currentEntry);
         setNodeEntry(freshEntry);
     }
@@ -193,7 +207,7 @@ public class ReceiveController extends WalletFormController implements Initializ
 
             List<Device> possibleDevices = (List<Device>)displayAddress.getUserData();
             if(possibleDevices != null && !possibleDevices.isEmpty()) {
-                if(possibleDevices.size() > 1 || possibleDevices.get(0).getNeedsPinSent() || possibleDevices.get(0).getNeedsPassphraseSent()) {
+                if(possibleDevices.size() > 1 || possibleDevices.get(0).isNeedsPinSent() || possibleDevices.get(0).isNeedsPassphraseSent()) {
                     DeviceAddressDialog dlg = new DeviceAddressDialog(wallet, addressDescriptor);
                     dlg.showAndWait();
                 } else {
@@ -230,6 +244,30 @@ public class ReceiveController extends WalletFormController implements Initializ
         this.currentEntry = null;
     }
 
+    private void signAndSendProofOfAddress(Aopp aopp) {
+        if(currentEntry == null) {
+            Platform.runLater(() -> signAndSendProofOfAddress(aopp));
+        } else {
+            try {
+                ButtonType signSendButtonType = new ButtonType("Sign & Send", ButtonBar.ButtonData.APPLY);
+                ButtonType cancelButtonType = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+                MessageSignDialog messageSignDialog = new MessageSignDialog(getWalletForm().getWallet(), currentEntry.getNode(), "Send Proof of Address", aopp.getMessage(), signSendButtonType, cancelButtonType);
+                messageSignDialog.setElectrumSignatureFormat(true);
+                Stage stage = (Stage)messageSignDialog.getDialogPane().getScene().getWindow();
+                stage.setAlwaysOnTop(true);
+                Optional<ButtonBar.ButtonData> buttonData = messageSignDialog.showAndWait();
+                if(buttonData.isPresent() && buttonData.get() == ButtonBar.ButtonData.OK_DONE) {
+                    Address address = getWalletForm().getWallet().getAddress(currentEntry.getNode());
+                    String signature = messageSignDialog.getSignature();
+                    aopp.sendProofOfAddress(address, signature);
+                    AppServices.showAlertDialog("Proof of Address Sent", "Proof of ownership of address\n" + address + "\nhas been successfully sent to\n" + aopp.getCallback().getHost() + ".", Alert.AlertType.INFORMATION);
+                }
+            } catch(Exception e) {
+                AppServices.showErrorDialog("Cannot send proof of ownership", e.getMessage());
+            }
+        }
+    }
+
     public static Glyph getUnusedGlyph() {
         Glyph checkGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.CHECK_CIRCLE);
         checkGlyph.getStyleClass().add("unused-check");
@@ -240,6 +278,12 @@ public class ReceiveController extends WalletFormController implements Initializ
     public static Glyph getWarningGlyph() {
         Glyph duplicateGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.EXCLAMATION_CIRCLE);
         duplicateGlyph.getStyleClass().add("duplicate-warning");
+        duplicateGlyph.setFontSize(12);
+        return duplicateGlyph;
+    }
+
+    public static Glyph getUnknownGlyph() {
+        Glyph duplicateGlyph = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.QUESTION_CIRCLE);
         duplicateGlyph.setFontSize(12);
         return duplicateGlyph;
     }
@@ -257,9 +301,17 @@ public class ReceiveController extends WalletFormController implements Initializ
     }
 
     @Subscribe
+    public void receiveProof(ReceiveProofEvent event) {
+        if(event.getWallet().equals(getWalletForm().getWallet())) {
+            Platform.runLater(() -> signAndSendProofOfAddress(event.getAopp()));
+        }
+    }
+
+    @Subscribe
     public void walletNodesChanged(WalletNodesChangedEvent event) {
         if(event.getWallet().equals(walletForm.getWallet())) {
-            clear();
+            currentEntry = null;
+            refreshAddress();
         }
     }
 
@@ -267,7 +319,7 @@ public class ReceiveController extends WalletFormController implements Initializ
     public void walletHistoryChanged(WalletHistoryChangedEvent event) {
         if(event.getWallet().equals(walletForm.getWallet())) {
             if(currentEntry != null && event.getHistoryChangedNodes().contains(currentEntry.getNode())) {
-                updateLastUsed();
+                refreshAddress();
             }
         }
     }
@@ -275,5 +327,15 @@ public class ReceiveController extends WalletFormController implements Initializ
     @Subscribe
     public void usbDevicesFound(UsbDeviceEvent event) {
         updateDisplayAddress(event.getDevices());
+    }
+
+    @Subscribe
+    public void connection(ConnectionEvent event) {
+        updateLastUsed();
+    }
+
+    @Subscribe
+    public void disconnection(DisconnectionEvent event) {
+        updateLastUsed();
     }
 }

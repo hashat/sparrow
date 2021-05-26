@@ -45,12 +45,12 @@ public class TransactionIdDialog extends Dialog<Sha256Hash> {
 
         ValidationSupport validationSupport = new ValidationSupport();
         Platform.runLater(() -> {
+            validationSupport.setValidationDecorator(new StyleClassValidationDecoration());
             validationSupport.registerValidator(txid, Validator.combine(
                     Validator.createEmptyValidator("Transaction id is required"),
                     (Control c, String newValue) -> ValidationResult.fromErrorIf(c, "Transaction ID length incorrect", newValue.length() != 64),
                     (Control c, String newValue) -> ValidationResult.fromErrorIf(c, "Transaction ID must be hexadecimal", !Utils.isHex(newValue))
             ));
-            validationSupport.setValidationDecorator(new StyleClassValidationDecoration());
         });
 
         final ButtonType okButtonType = new javafx.scene.control.ButtonType("Open Transaction", ButtonBar.ButtonData.OK_DONE);
@@ -63,5 +63,6 @@ public class TransactionIdDialog extends Dialog<Sha256Hash> {
         txid.setPromptText("f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16");
         Platform.runLater(txid::requestFocus);
         setResultConverter(dialogButton -> dialogButton == okButtonType ? Sha256Hash.wrap(txid.getText()) : null);
+        AppServices.moveToActiveWindowScreen(this);
     }
 }

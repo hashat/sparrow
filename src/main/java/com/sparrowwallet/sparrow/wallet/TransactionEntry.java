@@ -8,7 +8,7 @@ import com.sparrowwallet.drongo.wallet.*;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.WalletTabData;
 import com.sparrowwallet.sparrow.event.WalletBlockHeightChangedEvent;
-import com.sparrowwallet.sparrow.event.WalletEntryLabelChangedEvent;
+import com.sparrowwallet.sparrow.event.WalletEntryLabelsChangedEvent;
 import com.sparrowwallet.sparrow.event.WalletTabsClosedEvent;
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.IntegerPropertyBase;
@@ -31,7 +31,7 @@ public class TransactionEntry extends Entry implements Comparable<TransactionEnt
 
         labelProperty().addListener((observable, oldValue, newValue) -> {
             blockTransaction.setLabel(newValue);
-            EventManager.get().post(new WalletEntryLabelChangedEvent(wallet, this));
+            EventManager.get().post(new WalletEntryLabelsChangedEvent(wallet, this));
         });
 
         setConfirmations(calculateConfirmations());
@@ -155,6 +155,16 @@ public class TransactionEntry extends Entry implements Comparable<TransactionEnt
 
     @Override
     public int compareTo(TransactionEntry other) {
+        int blockOrder = blockTransaction.compareBlockOrder(other.blockTransaction);
+        if(blockOrder != 0) {
+            return blockOrder;
+        }
+
+        int valueOrder = Long.compare(other.getValue(), getValue());
+        if(valueOrder != 0) {
+            return valueOrder;
+        }
+
         return blockTransaction.compareTo(other.blockTransaction);
     }
 

@@ -10,4 +10,4 @@ Sparrow is licensed under the Apache 2 software licence.
 
 ## Credit
 
-[craigraw](https://github.com/craigraw) seems to be original developer behind this [project](https://github.com/sparrowwallet/sparrow).
+[craigraw](https://github.com/craigraw) is original developer behind this [project](https://github.com/sparrowwallet/sparrow).

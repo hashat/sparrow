@@ -13,13 +13,14 @@ import com.sparrowwallet.sparrow.event.WalletHistoryStatusEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SimpleElectrumServerRpc implements ElectrumServerRpc {
     private static final Logger log = LoggerFactory.getLogger(SimpleElectrumServerRpc.class);
     private static final int MAX_TARGET_BLOCKS = 25;
-    private static final int MAX_RETRIES = 10;
+    private static final int MAX_RETRIES = 5;
     private static final int RETRY_DELAY = 1;
 
     private final AtomicLong idCounter = new AtomicLong();
@@ -82,7 +83,7 @@ public class SimpleElectrumServerRpc implements ElectrumServerRpc {
                 result.put(path, scriptHashTxes);
             } catch(Exception e) {
                 if(failOnError) {
-                    throw new ElectrumServerRpcException("Failed to retrieve reference for path: " + path, e);
+                    throw new ElectrumServerRpcException("Failed to retrieve transaction history for path: " + path, e);
                 }
 
                 result.put(path, new ScriptHashTx[] {ScriptHashTx.ERROR_TX});
@@ -104,7 +105,7 @@ public class SimpleElectrumServerRpc implements ElectrumServerRpc {
                 result.put(path, scriptHashTxes);
             } catch(Exception e) {
                 if(failOnError) {
-                    throw new ElectrumServerRpcException("Failed to retrieve reference for path: " + path, e);
+                    throw new ElectrumServerRpcException("Failed to retrieve mempool transactions for path: " + path, e);
                 }
 
                 result.put(path, new ScriptHashTx[] {ScriptHashTx.ERROR_TX});
@@ -127,7 +128,7 @@ public class SimpleElectrumServerRpc implements ElectrumServerRpc {
                 result.put(path, scriptHash);
             } catch(Exception e) {
                 //Even if we have some successes, failure to subscribe for all script hashes will result in outdated wallet view. Don't proceed.
-                throw new ElectrumServerRpcException("Failed to retrieve reference for path: " + path, e);
+                throw new ElectrumServerRpcException("Failed to subscribe to path: " + path, e);
             }
         }
 
@@ -169,6 +170,9 @@ public class SimpleElectrumServerRpc implements ElectrumServerRpc {
                 String rawTxHex = new RetryLogic<String>(MAX_RETRIES, RETRY_DELAY, List.of(IllegalStateException.class, IllegalArgumentException.class)).getResult(() ->
                         client.createRequest().returnAs(String.class).method("blockchain.transaction.get").id(idCounter.incrementAndGet()).params(txid).execute());
                 result.put(txid, rawTxHex);
+            } catch(ServerException e) {
+                //If there is an error with the server connection, don't keep trying - this may take too long given many txids
+                throw new ElectrumServerRpcException("Failed to retrieve transaction for txid [" + txid.substring(0, 6) + "]", e);
             } catch(Exception e) {
                 result.put(txid, Sha256Hash.ZERO_HASH.toString());
             }
@@ -254,12 +258,14 @@ public class SimpleElectrumServerRpc implements ElectrumServerRpc {
     public Map<Long, Long> getFeeRateHistogram(Transport transport) {
         try {
             JsonRpcClient client = new JsonRpcClient(transport);
-            Long[][] feesArray = new RetryLogic<Long[][]>(MAX_RETRIES, RETRY_DELAY, IllegalStateException.class).getResult(() ->
-                    client.createRequest().returnAs(Long[][].class).method("mempool.get_fee_histogram").id(idCounter.incrementAndGet()).execute());
+            BigInteger[][] feesArray = new RetryLogic<BigInteger[][]>(MAX_RETRIES, RETRY_DELAY, IllegalStateException.class).getResult(() ->
+                    client.createRequest().returnAs(BigInteger[][].class).method("mempool.get_fee_histogram").id(idCounter.incrementAndGet()).execute());
 
             Map<Long, Long> feeRateHistogram = new TreeMap<>();
-            for(Long[] feePair : feesArray) {
-                feeRateHistogram.put(feePair[0], feePair[1]);
+            for(BigInteger[] feePair : feesArray) {
+                if(feePair[0].longValue() > 0) {
+                    feeRateHistogram.put(feePair[0].longValue(), feePair[1].longValue());
+                }
             }
 
             return feeRateHistogram;

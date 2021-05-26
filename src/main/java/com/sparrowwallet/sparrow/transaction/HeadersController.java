@@ -9,8 +9,7 @@ import com.sparrowwallet.drongo.psbt.PSBT;
 import com.sparrowwallet.drongo.psbt.PSBTInput;
 import com.sparrowwallet.drongo.uri.BitcoinURI;
 import com.sparrowwallet.drongo.wallet.*;
-import com.sparrowwallet.hummingbird.UR;
-import com.sparrowwallet.hummingbird.registry.RegistryType;
+import com.sparrowwallet.hummingbird.registry.CryptoPSBT;
 import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.control.*;
@@ -21,6 +20,7 @@ import com.sparrowwallet.sparrow.net.ElectrumServer;
 import com.sparrowwallet.sparrow.io.Storage;
 import com.sparrowwallet.sparrow.payjoin.Payjoin;
 import com.sparrowwallet.sparrow.payjoin.PayjoinReceiverException;
+import com.sparrowwallet.sparrow.wallet.Entry;
 import com.sparrowwallet.sparrow.wallet.HashIndexEntry;
 import com.sparrowwallet.sparrow.wallet.TransactionEntry;
 import javafx.application.Platform;
@@ -490,7 +490,7 @@ public class HeadersController extends TransactionFormController implements Init
     private void updateFee(Long feeAmt) {
         fee.setValue(feeAmt);
         double feeRateAmt = feeAmt.doubleValue() / headersForm.getTransaction().getVirtualSize();
-        feeRate.setText(String.format("%.2f", feeRateAmt) + " sats/vByte");
+        feeRate.setText(String.format("%.2f", feeRateAmt) + " sats/vB" + (headersForm.isTransactionFinalized() ? "" : " (non-final)"));
     }
 
     private void updateBlockchainForm(BlockTransaction blockTransaction, Integer currentHeight) {
@@ -646,12 +646,9 @@ public class HeadersController extends TransactionFormController implements Init
         //TODO: Remove once Cobo Vault has upgraded to UR2.0
         boolean addLegacyEncodingOption = headersForm.getSigningWallet().getKeystores().stream().anyMatch(keystore -> keystore.getWalletModel().equals(WalletModel.COBO_VAULT) || keystore.getWalletModel().equals(WalletModel.SPARROW));
 
-        try {
-            QRDisplayDialog qrDisplayDialog = new QRDisplayDialog(RegistryType.CRYPTO_PSBT.toString(), headersForm.getPsbt().serialize(), addLegacyEncodingOption);
-            qrDisplayDialog.show();
-        } catch(UR.URException e) {
-            log.error("Error creating PSBT UR", e);
-        }
+        CryptoPSBT cryptoPSBT = new CryptoPSBT(headersForm.getPsbt().serialize());
+        QRDisplayDialog qrDisplayDialog = new QRDisplayDialog(cryptoPSBT.toUR(), addLegacyEncodingOption);
+        qrDisplayDialog.show();
     }
 
     public void scanPSBT(ActionEvent event) {
@@ -674,6 +671,7 @@ public class HeadersController extends TransactionFormController implements Init
             fileChooser.setInitialFileName(headersForm.getName() + ".psbt");
         }
 
+        AppServices.moveToActiveWindowScreen(window, 800, 450);
         File file = fileChooser.showSaveDialog(window);
         if(file != null) {
             if(!file.getName().toLowerCase().endsWith(".psbt")) {
@@ -702,7 +700,7 @@ public class HeadersController extends TransactionFormController implements Init
     }
 
     private void signSoftwareKeystores() {
-        if(headersForm.getSigningWallet().getKeystores().stream().noneMatch(Keystore::hasSeed)) {
+        if(headersForm.getSigningWallet().getKeystores().stream().noneMatch(Keystore::hasPrivateKey)) {
             return;
         }
 
@@ -819,6 +817,7 @@ public class HeadersController extends TransactionFormController implements Init
                 transactionMempoolService = new ElectrumServer.TransactionMempoolService(headersForm.getSigningWallet(), headersForm.getTransaction().getTxId(), headersForm.getSigningWalletNodes());
                 transactionMempoolService.setDelay(Duration.seconds(3));
                 transactionMempoolService.setPeriod(Duration.seconds(10));
+                transactionMempoolService.setRestartOnFailure(false);
                 transactionMempoolService.setOnSucceeded(mempoolWorkerStateEvent -> {
                     Set<String> scriptHashes = transactionMempoolService.getValue();
                     if(!scriptHashes.isEmpty()) {
@@ -832,6 +831,13 @@ public class HeadersController extends TransactionFormController implements Init
                         AppServices.showErrorDialog("Timeout searching for broadcasted transaction", "The transaction was broadcast but the server did not register it in the mempool. It is safe to try broadcasting again.");
                         broadcastButton.setDisable(false);
                     }
+                });
+                transactionMempoolService.setOnFailed(mempoolWorkerStateEvent -> {
+                    transactionMempoolService.cancel();
+                    broadcastProgressBar.setProgress(0);
+                    log.error("Timeout searching for broadcasted transaction");
+                    AppServices.showErrorDialog("Timeout searching for broadcasted transaction", "The transaction was broadcast but the server did not indicate it had entered the mempool. It is safe to try broadcasting again.");
+                    broadcastButton.setDisable(false);
                 });
                 transactionMempoolService.start();
             } else {
@@ -876,6 +882,7 @@ public class HeadersController extends TransactionFormController implements Init
             fileChooser.setInitialFileName(headersForm.getName().replace(".psbt", "") + ".txn");
         }
 
+        AppServices.moveToActiveWindowScreen(window, 800, 450);
         File file = fileChooser.showSaveDialog(window);
         if(file != null) {
             try {
@@ -896,13 +903,16 @@ public class HeadersController extends TransactionFormController implements Init
             throw new IllegalStateException("No valid Payjoin URI");
         }
 
-        try {
-            Payjoin payjoin = new Payjoin(payjoinURI, headersForm.getSigningWallet(), headersForm.getPsbt());
-            PSBT proposalPsbt = payjoin.requestPayjoinPSBT(true);
+        Payjoin payjoin = new Payjoin(payjoinURI, headersForm.getSigningWallet(), headersForm.getPsbt());
+        Payjoin.RequestPayjoinPSBTService requestPayjoinPSBTService = new Payjoin.RequestPayjoinPSBTService(payjoin, true);
+        requestPayjoinPSBTService.setOnSucceeded(successEvent -> {
+            PSBT proposalPsbt = requestPayjoinPSBTService.getValue();
             EventManager.get().post(new ViewPSBTEvent(payjoinButton.getScene().getWindow(), headersForm.getName() + " Payjoin", null, proposalPsbt));
-        } catch(PayjoinReceiverException e) {
-            AppServices.showErrorDialog("Invalid Payjoin Transaction", e.getMessage());
-        }
+        });
+        requestPayjoinPSBTService.setOnFailed(failedEvent -> {
+            AppServices.showErrorDialog("Error Requesting Payjoin Transaction", failedEvent.getSource().getException().getMessage());
+        });
+        requestPayjoinPSBTService.start();
     }
 
     @Override
@@ -937,7 +947,7 @@ public class HeadersController extends TransactionFormController implements Init
         if(event.getTxId().equals(headersForm.getTransaction().getTxId())) {
             if(event.getBlockTransaction() != null && (!Sha256Hash.ZERO_HASH.equals(event.getBlockTransaction().getBlockHash()) || headersForm.getBlockTransaction() == null)) {
                 updateBlockchainForm(event.getBlockTransaction(), AppServices.getCurrentBlockHeight());
-            } else if(headersForm.getPsbt() == null) {
+            } else if(headersForm.getPsbt() == null && headersForm.getBlockTransaction() == null) {
                 boolean isSigned = true;
                 ObservableMap<TransactionSignature, Keystore> signatureKeystoreMap = FXCollections.observableMap(new LinkedHashMap<>());
                 for(TransactionInput txInput : headersForm.getTransaction().getInputs()) {
@@ -1150,23 +1160,28 @@ public class HeadersController extends TransactionFormController implements Init
         if(headersForm.getSigningWallet() != null && !(headersForm.getSigningWallet() instanceof FinalizingPSBTWallet)) {
             Sha256Hash txid = headersForm.getTransaction().getTxId();
 
+            List<Entry> changedLabelEntries = new ArrayList<>();
             BlockTransaction blockTransaction = event.getWallet().getTransactions().get(txid);
             if(blockTransaction != null && blockTransaction.getLabel() == null) {
                 blockTransaction.setLabel(headersForm.getName());
-                Platform.runLater(() -> EventManager.get().post(new WalletEntryLabelChangedEvent(event.getWallet(), new TransactionEntry(event.getWallet(), blockTransaction, Collections.emptyMap(), Collections.emptyMap()))));
+                changedLabelEntries.add(new TransactionEntry(event.getWallet(), blockTransaction, Collections.emptyMap(), Collections.emptyMap()));
             }
 
             for(WalletNode walletNode : event.getHistoryChangedNodes()) {
                 for(BlockTransactionHashIndex output : walletNode.getTransactionOutputs()) {
                     if(output.getHash().equals(txid) && output.getLabel() == null) { //If we send to ourselves, usually change
                         output.setLabel(headersForm.getName() + (walletNode.getKeyPurpose().equals(event.getWallet().getChangeChain()) ? " (change)" : " (received)"));
-                        Platform.runLater(() -> EventManager.get().post(new WalletEntryLabelChangedEvent(event.getWallet(), new HashIndexEntry(event.getWallet(), output, HashIndexEntry.Type.OUTPUT, walletNode.getKeyPurpose()))));
+                        changedLabelEntries.add(new HashIndexEntry(event.getWallet(), output, HashIndexEntry.Type.OUTPUT, walletNode.getKeyPurpose()));
                     }
                     if(output.getSpentBy() != null && output.getSpentBy().getHash().equals(txid) && output.getSpentBy().getLabel() == null) { //The norm - sending out
                         output.getSpentBy().setLabel(headersForm.getName() + " (input)");
-                        Platform.runLater(() -> EventManager.get().post(new WalletEntryLabelChangedEvent(event.getWallet(), new HashIndexEntry(event.getWallet(), output.getSpentBy(), HashIndexEntry.Type.INPUT, walletNode.getKeyPurpose()))));
+                        changedLabelEntries.add(new HashIndexEntry(event.getWallet(), output.getSpentBy(), HashIndexEntry.Type.INPUT, walletNode.getKeyPurpose()));
                     }
                 }
+            }
+
+            if(!changedLabelEntries.isEmpty()) {
+                Platform.runLater(() -> EventManager.get().post(new WalletEntryLabelsChangedEvent(event.getWallet(), changedLabelEntries)));
             }
         }
     }

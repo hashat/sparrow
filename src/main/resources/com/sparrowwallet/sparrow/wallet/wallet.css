@@ -43,7 +43,7 @@
 }
 
 .transaction-row.confirming {
-    -fx-opacity: 0.8;
+    -fx-opacity: 0.7;
 }
 
 .utxo-row.unspendable {
@@ -73,6 +73,14 @@
 .coin-cell .confirmation-progress {
     -fx-pref-width: 14;
     -fx-padding: 0 8 0 0;
+}
+
+.coin-cell.negative-amount {
+    -fx-text-fill: rgb(202, 18, 67);
+}
+
+.tree-table-row-cell:selected .coin-cell.negative-amount {
+    -fx-text-fill: white;
 }
 
 .confirmation-progress-circle, .confirmation-progress-tick {

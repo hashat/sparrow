@@ -7,6 +7,7 @@ import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.drongo.wallet.WalletNode;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.event.NewWalletTransactionsEvent;
+import com.sparrowwallet.sparrow.io.Config;
 import javafx.beans.property.LongProperty;
 import javafx.beans.property.LongPropertyBase;
 import org.slf4j.Logger;
@@ -37,9 +38,11 @@ public class WalletTransactionsEntry extends Entry {
 
         for(Entry entry : getChildren()) {
             TransactionEntry transactionEntry = (TransactionEntry)entry;
-            if(transactionEntry.getConfirmations() != 0) {
+            if(transactionEntry.getConfirmations() != 0 || transactionEntry.getValue() < 0 || Config.get().isIncludeMempoolOutputs()) {
                 balance += entry.getValue();
-            } else {
+            }
+
+            if(transactionEntry.getConfirmations() == 0) {
                 mempoolBalance += entry.getValue();
             }
 

@@ -11,8 +11,13 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.lang.reflect.Type;
+import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Arrays;
 import java.util.Currency;
 import java.util.List;
+import java.util.Random;
+import java.util.stream.Collectors;
 
 public class Config {
     private static final Logger log = LoggerFactory.getLogger(Config.class);
@@ -28,13 +33,15 @@ public class Config {
     private boolean loadRecentWallets = true;
     private boolean validateDerivationPaths = true;
     private boolean groupByAddress = true;
-    private boolean includeMempoolChange = true;
+    private boolean includeMempoolOutputs = true;
     private boolean notifyNewTransactions = true;
     private boolean checkNewVersions = true;
     private Theme theme;
     private boolean openWalletsInNewWindows = false;
     private boolean hideEmptyUsedAddresses = false;
     private boolean showTransactionHex = true;
+    private boolean showLoadingLog = false;
+    private boolean showUtxosChart = true;
     private List<File> recentWalletFiles;
     private Integer keyDerivationPeriod;
     private File hwi;
@@ -63,10 +70,6 @@ public class Config {
 
     private static File getConfigFile() {
         File sparrowDir = Storage.getSparrowDir();
-        if(!sparrowDir.exists()) {
-            sparrowDir.mkdirs();
-        }
-
         return new File(sparrowDir, CONFIG_FILENAME);
     }
 
@@ -183,12 +186,12 @@ public class Config {
         flush();
     }
 
-    public boolean isIncludeMempoolChange() {
-        return includeMempoolChange;
+    public boolean isIncludeMempoolOutputs() {
+        return includeMempoolOutputs;
     }
 
-    public void setIncludeMempoolChange(boolean includeMempoolChange) {
-        this.includeMempoolChange = includeMempoolChange;
+    public void setIncludeMempoolOutputs(boolean includeMempoolOutputs) {
+        this.includeMempoolOutputs = includeMempoolOutputs;
         flush();
     }
 
@@ -243,6 +246,24 @@ public class Config {
 
     public void setShowTransactionHex(boolean showTransactionHex) {
         this.showTransactionHex = showTransactionHex;
+        flush();
+    }
+
+    public boolean isShowLoadingLog() {
+        return showLoadingLog;
+    }
+
+    public void setShowLoadingLog(boolean showLoadingLog) {
+        this.showLoadingLog = showLoadingLog;
+        flush();
+    }
+
+    public boolean isShowUtxosChart() {
+        return showUtxosChart;
+    }
+
+    public void setShowUtxosChart(boolean showUtxosChart) {
+        this.showUtxosChart = showUtxosChart;
         flush();
     }
 
@@ -331,6 +352,11 @@ public class Config {
     public void setPublicElectrumServer(String publicElectrumServer) {
         this.publicElectrumServer = publicElectrumServer;
         flush();
+    }
+
+    public void changePublicServer() {
+        List<String> otherServers = Arrays.stream(PublicElectrumServer.values()).map(PublicElectrumServer::getUrl).filter(url -> !url.equals(getPublicElectrumServer())).collect(Collectors.toList());
+        setPublicElectrumServer(otherServers.get(new Random().nextInt(otherServers.size())));
     }
 
     public String getCoreServer() {
@@ -427,6 +453,10 @@ public class Config {
         Gson gson = getGson();
         try {
             File configFile = getConfigFile();
+            if(!configFile.exists()) {
+                Storage.createOwnerOnlyFile(configFile);
+            }
+
             Writer writer = new FileWriter(configFile);
             gson.toJson(this, writer);
             writer.flush();

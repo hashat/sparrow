@@ -80,6 +80,7 @@ public class AppController implements Initializable {
     public static final double TAB_LABEL_GRAPHIC_OPACITY_ACTIVE = 0.95;
     public static final String LOADING_TRANSACTIONS_MESSAGE = "Loading wallet, select Transactions tab to view...";
     public static final String CONNECTION_FAILED_PREFIX = "Connection failed: ";
+    public static final String TRYING_ANOTHER_SERVER_MESSAGE = "trying another server...";
 
     @FXML
     private MenuItem saveTransaction;
@@ -121,6 +122,12 @@ public class AppController implements Initializable {
     private CheckMenuItem useHdCameraResolution;
 
     @FXML
+    private CheckMenuItem showLoadingLog;
+
+    @FXML
+    private CheckMenuItem showUtxosChart;
+
+    @FXML
     private CheckMenuItem showTxHex;
 
     @FXML
@@ -128,6 +135,9 @@ public class AppController implements Initializable {
 
     @FXML
     private MenuItem refreshWallet;
+
+    @FXML
+    private MenuItem sendToMany;
 
     @FXML
     private StackPane rootStack;
@@ -167,11 +177,7 @@ public class AppController implements Initializable {
             boolean success = false;
             if(db.hasFiles()) {
                 for(File file : db.getFiles()) {
-                    if(isWalletFile(file)) {
-                        openWalletFile(file, true);
-                    } else {
-                        openTransactionFile(file);
-                    }
+                    openFile(file);
                 }
                 success = true;
             }
@@ -259,9 +265,12 @@ public class AppController implements Initializable {
         hideEmptyUsedAddresses.setSelected(Config.get().isHideEmptyUsedAddresses());
         useHdCameraResolution.setSelected(Config.get().isHdCapture());
         showTxHex.setSelected(Config.get().isShowTransactionHex());
+        showLoadingLog.setSelected(Config.get().isShowLoadingLog());
+        showUtxosChart.setSelected(Config.get().isShowUtxosChart());
         savePSBT.visibleProperty().bind(saveTransaction.visibleProperty().not());
         exportWallet.setDisable(true);
         refreshWallet.disableProperty().bind(Bindings.or(exportWallet.disableProperty(), Bindings.or(serverToggle.disableProperty(), AppServices.onlineProperty().not())));
+        sendToMany.disableProperty().bind(exportWallet.disableProperty());
 
         setServerType(Config.get().getServerType());
         serverToggle.setSelected(isConnected());
@@ -311,7 +320,7 @@ public class AppController implements Initializable {
         }
     }
 
-    public void showDocumentation(ActionEvent event) throws IOException {
+    public void showDocumentation(ActionEvent event) {
         AppServices.get().getApplication().getHostServices().showDocument("https://sparrowwallet.com/docs");
     }
 
@@ -322,6 +331,10 @@ public class AppController implements Initializable {
         } else {
             AppServices.showErrorDialog("Log file unavailable", "Cannot find log file at " + logFile.getCanonicalPath());
         }
+    }
+
+    public void submitBugReport(ActionEvent event) {
+        AppServices.get().getApplication().getHostServices().showDocument("https://sparrowwallet.com/submitbugreport");
     }
 
     public void showAbout(ActionEvent event) {
@@ -339,7 +352,9 @@ public class AppController implements Initializable {
             stage.setTitle("About " + MainApp.APP_NAME);
             stage.initStyle(org.controlsfx.tools.Platform.getCurrent() == org.controlsfx.tools.Platform.OSX ? StageStyle.UNDECORATED : StageStyle.DECORATED);
             stage.setResizable(false);
-            stage.setScene(new Scene(root));
+            Scene scene = new Scene(root);
+            AppServices.onEscapePressed(scene, stage::close);
+            stage.setScene(scene);
             controller.setStage(stage);
             controller.initializeView();
             setStageIcon(stage);
@@ -381,6 +396,7 @@ public class AppController implements Initializable {
                 new FileChooser.ExtensionFilter("TXN", "*.txn")
         );
 
+        AppServices.moveToActiveWindowScreen(window, 800, 450);
         File file = fileChooser.showOpenDialog(window);
         if (file != null) {
             openTransactionFile(file);
@@ -427,7 +443,7 @@ public class AppController implements Initializable {
                 showErrorDialog("Invalid PSBT", e.getMessage());
             } catch(TransactionParseException e) {
                 showErrorDialog("Invalid transaction", e.getMessage());
-            } catch(ParseException e) {
+            } catch(Exception e) {
                 showErrorDialog("Invalid file", e.getMessage());
             }
         }
@@ -520,6 +536,7 @@ public class AppController implements Initializable {
                fileChooser.setInitialFileName(fileName);
             }
 
+            AppServices.moveToActiveWindowScreen(window, 800, 450);
             File file = fileChooser.showSaveDialog(window);
             if(file != null) {
                 try(PrintWriter writer = new PrintWriter(file, StandardCharsets.UTF_8)) {
@@ -533,14 +550,22 @@ public class AppController implements Initializable {
     }
 
     public void savePSBTBinary(ActionEvent event) {
-        savePSBT(false);
+        savePSBT(false, true);
     }
 
     public void savePSBTText(ActionEvent event) {
-        savePSBT(true);
+        savePSBT(true, true);
     }
 
-    public void savePSBT(boolean asText) {
+    public void savePSBTBinaryNoXpubs(ActionEvent event) {
+        savePSBT(false, false);
+    }
+
+    public void savePSBTTextNoXpubs(ActionEvent event) {
+        savePSBT(true, false);
+    }
+
+    public void savePSBT(boolean asText, boolean includeXpubs) {
         Tab selectedTab = tabs.getSelectionModel().getSelectedItem();
         TabData tabData = (TabData)selectedTab.getUserData();
         if(tabData.getType() == TabData.TabType.TRANSACTION) {
@@ -563,6 +588,7 @@ public class AppController implements Initializable {
                 fileChooser.setInitialFileName(fileName);
             }
 
+            AppServices.moveToActiveWindowScreen(window, 800, 450);
             File file = fileChooser.showSaveDialog(window);
             if(file != null) {
                 if(!asText && !file.getName().toLowerCase().endsWith(".psbt")) {
@@ -572,10 +598,10 @@ public class AppController implements Initializable {
                 try(FileOutputStream outputStream = new FileOutputStream(file)) {
                     if(asText) {
                         PrintWriter writer = new PrintWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
-                        writer.print(transactionTabData.getPsbt().toBase64String());
+                        writer.print(transactionTabData.getPsbt().toBase64String(includeXpubs));
                         writer.flush();
                     } else {
-                        outputStream.write(transactionTabData.getPsbt().serialize());
+                        outputStream.write(transactionTabData.getPsbt().serialize(includeXpubs));
                     }
                 } catch(IOException e) {
                     log.error("Error saving PSBT", e);
@@ -649,6 +675,18 @@ public class AppController implements Initializable {
         Config.get().setHdCapture(item.isSelected());
     }
 
+    public void showLoadingLog(ActionEvent event) {
+        CheckMenuItem item = (CheckMenuItem)event.getSource();
+        Config.get().setShowLoadingLog(item.isSelected());
+        EventManager.get().post(new LoadingLogChangedEvent(item.isSelected()));
+    }
+
+    public void showUtxosChart(ActionEvent event) {
+        CheckMenuItem item = (CheckMenuItem)event.getSource();
+        Config.get().setShowUtxosChart(item.isSelected());
+        EventManager.get().post(new UtxosChartChangedEvent(item.isSelected()));
+    }
+
     public void showTxHex(ActionEvent event) {
         CheckMenuItem item = (CheckMenuItem)event.getSource();
         Config.get().setShowTransactionHex(item.isSelected());
@@ -662,9 +700,12 @@ public class AppController implements Initializable {
         EventManager.get().post(new BitcoinUnitChangedEvent(unit));
     }
 
-    private boolean isWalletFile(File file) {
-        FileType fileType = IOUtils.getFileType(file);
-        return FileType.JSON.equals(fileType) || FileType.BINARY.equals(fileType);
+    public void openFile(File file) {
+        if(isWalletFile(file)) {
+            openWalletFile(file, true);
+        } else {
+            openTransactionFile(file);
+        }
     }
 
     private void setServerToggleTooltip(Integer currentBlockHeight) {
@@ -704,6 +745,7 @@ public class AppController implements Initializable {
         fileChooser.setTitle("Open Wallet");
         fileChooser.setInitialDirectory(Storage.getWalletsDir());
 
+        AppServices.moveToActiveWindowScreen(window, 800, 450);
         File file = fileChooser.showOpenDialog(window);
         if(file != null) {
             openWalletFile(file, forceSameWindow);
@@ -715,14 +757,16 @@ public class AppController implements Initializable {
             Storage storage = new Storage(file);
             FileType fileType = IOUtils.getFileType(file);
             if(FileType.JSON.equals(fileType)) {
-                Storage.WalletBackupAndKey walletBackupAndKey = storage.loadWallet();
-                checkWalletNetwork(walletBackupAndKey.wallet);
-                restorePublicKeysFromSeed(walletBackupAndKey.wallet, null);
-//                if(!walletBackupAndKey.wallet.isValid()) {
-//                    throw new IllegalStateException("Wallet file is not valid.");
-//                }
-                walletBackupAndKey.wallet.checkWallet(); // Hashat> in order not to lose the message why the check failed, changed the above if_not_isValid() to directly calling checkWallet
-                addWalletTabOrWindow(storage, walletBackupAndKey.wallet, walletBackupAndKey.backupWallet, forceSameWindow);
+//                Storage.WalletBackupAndKey walletBackupAndKey = storage.loadWallet();
+//                checkWalletNetwork(walletBackupAndKey.wallet);
+//                restorePublicKeysFromSeed(walletBackupAndKey.wallet, null);
+////                if(!walletBackupAndKey.wallet.isValid()) {
+////                    throw new IllegalStateException("Wallet file is not valid.");
+////                }
+//                walletBackupAndKey.wallet.checkWallet(); // Hashat> in order not to lose the message why the check failed, changed the above if_not_isValid() to directly calling checkWallet
+//                addWalletTabOrWindow(storage, walletBackupAndKey.wallet, walletBackupAndKey.backupWallet, forceSameWindow);
+                WalletBackupAndKey walletBackupAndKey = storage.loadUnencryptedWallet();
+                openWallet(storage, walletBackupAndKey, this, forceSameWindow);
             } else if(FileType.BINARY.equals(fileType)) {
                 WalletPasswordDialog dlg = new WalletPasswordDialog(file.getName(), WalletPasswordDialog.PasswordRequirement.LOAD);
                 Optional<SecureString> optionalPassword = dlg.showAndWait();
@@ -734,16 +778,8 @@ public class AppController implements Initializable {
                 Storage.LoadWalletService loadWalletService = new Storage.LoadWalletService(storage, password);
                 loadWalletService.setOnSucceeded(workerStateEvent -> {
                     EventManager.get().post(new StorageEvent(storage.getWalletFile(), TimedEvent.Action.END, "Done"));
-                    Storage.WalletBackupAndKey walletBackupAndKey = loadWalletService.getValue();
-                    try {
-                        checkWalletNetwork(walletBackupAndKey.wallet);
-                        restorePublicKeysFromSeed(walletBackupAndKey.wallet, walletBackupAndKey.key);
-                        addWalletTabOrWindow(storage, walletBackupAndKey.wallet, walletBackupAndKey.backupWallet, forceSameWindow);
-                    } catch(Exception e) {
-                        showErrorDialog("Error Opening Wallet", e.getMessage());
-                    } finally {
-                        walletBackupAndKey.key.clear();
-                    }
+                    WalletBackupAndKey walletBackupAndKey = loadWalletService.getValue();
+                    openWallet(storage, walletBackupAndKey, this, forceSameWindow);
                 });
                 loadWalletService.setOnFailed(workerStateEvent -> {
                     EventManager.get().post(new StorageEvent(storage.getWalletFile(), TimedEvent.Action.END, "Failed"));
@@ -774,6 +810,25 @@ public class AppController implements Initializable {
         }
     }
 
+    private void openWallet(Storage storage, WalletBackupAndKey walletBackupAndKey, AppController appController, boolean forceSameWindow) {
+        try {
+            checkWalletNetwork(walletBackupAndKey.getWallet());
+            restorePublicKeysFromSeed(walletBackupAndKey.getWallet(), walletBackupAndKey.getKey());
+            if(!walletBackupAndKey.getWallet().isValid()) {
+                throw new IllegalStateException("Wallet file is not valid.");
+            }
+            AppController walletAppController = appController.addWalletTabOrWindow(storage, walletBackupAndKey.getWallet(), walletBackupAndKey.getBackupWallet(), forceSameWindow);
+            for(Map.Entry<Storage, WalletBackupAndKey> entry : walletBackupAndKey.getChildWallets().entrySet()) {
+                openWallet(entry.getKey(), entry.getValue(), walletAppController, true);
+            }
+            Platform.runLater(() -> selectTab(walletBackupAndKey.getWallet()));
+        } catch(Exception e) {
+            showErrorDialog("Error Opening Wallet", e.getMessage());
+        } finally {
+            walletBackupAndKey.clear();
+        }
+    }
+
     private void checkWalletNetwork(Wallet wallet) {
         if(wallet.getNetwork() != null && wallet.getNetwork() != Network.get()) {
             throw new IllegalStateException("Provided " + wallet.getNetwork() + " wallet is invalid on a " + Network.get() + " network. Use a " + wallet.getNetwork() + " configuration to load this wallet.");
@@ -781,7 +836,7 @@ public class AppController implements Initializable {
     }
 
     private void restorePublicKeysFromSeed(Wallet wallet, Key key) throws MnemonicException {
-        if(wallet.containsSeeds()) {
+        if(wallet.containsPrivateKeys()) {
             //Derive xpub and master fingerprint from seed, potentially with passphrase
             Wallet copy = wallet.copy();
             for(Keystore copyKeystore : copy.getKeystores()) {
@@ -817,6 +872,12 @@ public class AppController implements Initializable {
                     keystore.setExtendedPublicKey(derivedKeystore.getExtendedPublicKey());
                     keystore.getSeed().setPassphrase(copyKeystore.getSeed().getPassphrase());
                     copyKeystore.getSeed().clear();
+                } else if(keystore.hasMasterPrivateExtendedKey()) {
+                    Keystore copyKeystore = copy.getKeystores().get(i);
+                    Keystore derivedKeystore = Keystore.fromMasterPrivateExtendedKey(copyKeystore.getMasterPrivateExtendedKey(), copyKeystore.getKeyDerivation().getDerivation());
+                    keystore.setKeyDerivation(derivedKeystore.getKeyDerivation());
+                    keystore.setExtendedPublicKey(derivedKeystore.getExtendedPublicKey());
+                    copyKeystore.getMasterPrivateKey().clear();
                 }
             }
         }
@@ -875,9 +936,11 @@ public class AppController implements Initializable {
         File walletFile = Storage.getExistingWallet(wallet.getName());
         if(walletFile != null) {
             Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            AppServices.setStageIcon(alert.getDialogPane().getScene().getWindow());
             alert.setTitle("Existing wallet found");
             alert.setHeaderText("Replace existing wallet?");
             alert.setContentText("Wallet file " + walletFile.getName() + " already exists.\n");
+            AppServices.moveToActiveWindowScreen(alert);
             Optional<ButtonType> result = alert.showAndWait();
             if(result.isPresent() && result.get() == ButtonType.CANCEL) {
                 return;
@@ -903,8 +966,13 @@ public class AppController implements Initializable {
         Optional<SecureString> password = dlg.showAndWait();
         if(password.isPresent()) {
             if(password.get().length() == 0) {
-                storage.setEncryptionPubKey(Storage.NO_PASSWORD_KEY);
-                addWalletTabOrWindow(storage, wallet, null, false);
+                try {
+                    storage.setEncryptionPubKey(Storage.NO_PASSWORD_KEY);
+                    storage.saveWallet(wallet);
+                    addWalletTabOrWindow(storage, wallet, null, false);
+                } catch(IOException e) {
+                    log.error("Error saving imported wallet", e);
+                }
             } else {
                 Storage.KeyDerivationService keyDerivationService = new Storage.KeyDerivationService(storage, password.get());
                 keyDerivationService.setOnSucceeded(workerStateEvent -> {
@@ -917,7 +985,10 @@ public class AppController implements Initializable {
                         key = new Key(encryptionFullKey.getPrivKeyBytes(), storage.getKeyDeriver().getSalt(), EncryptionType.Deriver.ARGON2);
                         wallet.encrypt(key);
                         storage.setEncryptionPubKey(encryptionPubKey);
+                        storage.saveWallet(wallet);
                         addWalletTabOrWindow(storage, wallet, null, false);
+                    } catch(IOException e) {
+                        log.error("Error saving imported wallet", e);
                     } finally {
                         encryptionFullKey.clear();
                         if(key != null) {
@@ -960,7 +1031,7 @@ public class AppController implements Initializable {
             WalletTabData walletTabData = (WalletTabData)tab.getUserData();
             Wallet wallet = walletTabData.getWallet();
             if(wallet.getKeystores().size() == 1 &&
-                    (wallet.getKeystores().get(0).hasSeed() || wallet.getKeystores().get(0).getSource() == KeystoreSource.HW_USB)) {
+                    (wallet.getKeystores().get(0).hasPrivateKey() || wallet.getKeystores().get(0).getSource() == KeystoreSource.HW_USB)) {
                 //Can sign and verify
                 messageSignDialog = new MessageSignDialog(wallet);
             }
@@ -972,6 +1043,28 @@ public class AppController implements Initializable {
         }
 
         messageSignDialog.showAndWait();
+    }
+
+    public void sendToMany(ActionEvent event) {
+        Tab selectedTab = tabs.getSelectionModel().getSelectedItem();
+        TabData tabData = (TabData)selectedTab.getUserData();
+        if(tabData.getType() == TabData.TabType.WALLET) {
+            WalletTabData walletTabData = (WalletTabData) tabData;
+            Wallet wallet = walletTabData.getWallet();
+            BitcoinUnit bitcoinUnit = Config.get().getBitcoinUnit();
+            if(bitcoinUnit == BitcoinUnit.AUTO) {
+                bitcoinUnit = wallet.getAutoUnit();
+            }
+
+            SendToManyDialog sendToManyDialog = new SendToManyDialog(bitcoinUnit);
+            Optional<List<Payment>> optPayments = sendToManyDialog.showAndWait();
+            optPayments.ifPresent(payments -> {
+                if(!payments.isEmpty()) {
+                    EventManager.get().post(new SendActionEvent(wallet, new ArrayList<>(wallet.getWalletUtxos().keySet())));
+                    Platform.runLater(() -> EventManager.get().post(new SendPaymentsEvent(wallet, payments)));
+                }
+            });
+        }
     }
 
     public void minimizeToTray(ActionEvent event) {
@@ -987,18 +1080,19 @@ public class AppController implements Initializable {
             Wallet pastWallet = wallet.copy();
             walletTabData.getStorage().backupTempWallet();
             wallet.clearHistory();
+            AppServices.clearTransactionHistoryCache(wallet);
             EventManager.get().post(new WalletAddressesChangedEvent(wallet, pastWallet, walletTabData.getStorage().getWalletFile()));
         }
     }
 
-    public void addWalletTabOrWindow(Storage storage, Wallet wallet, Wallet backupWallet, boolean forceSameWindow) {
+    public AppController addWalletTabOrWindow(Storage storage, Wallet wallet, Wallet backupWallet, boolean forceSameWindow) {
         Window existingWalletWindow = AppServices.get().getWindowForWallet(storage);
         if(existingWalletWindow instanceof Stage) {
             Stage existingWalletStage = (Stage)existingWalletWindow;
             existingWalletStage.toFront();
 
             EventManager.get().post(new ViewWalletEvent(existingWalletWindow, wallet, storage));
-            return;
+            return this;
         }
 
         if(!forceSameWindow && Config.get().isOpenWalletsInNewWindows() && !getOpenWallets().isEmpty()) {
@@ -1007,8 +1101,10 @@ public class AppController implements Initializable {
             stage.toFront();
             stage.setX(AppServices.get().getWalletWindowMaxX() + 30);
             appController.addWalletTab(storage, wallet, backupWallet);
+            return appController;
         } else {
             addWalletTab(storage, wallet, backupWallet);
+            return this;
         }
     }
 
@@ -1253,6 +1349,28 @@ public class AppController implements Initializable {
         EventManager.get().post(new ThemeChangedEvent(selectedTheme));
     }
 
+    private void serverToggleStartAnimation() {
+        Node thumbArea = serverToggle.lookup(".thumb-area");
+        if(thumbArea != null) {
+            FadeTransition fadeTransition = new FadeTransition(Duration.millis(1000), thumbArea);
+            fadeTransition.setFromValue(1.0);
+            fadeTransition.setToValue(0.4);
+            fadeTransition.setAutoReverse(true);
+            fadeTransition.setCycleCount(Animation.INDEFINITE);
+            fadeTransition.play();
+            serverToggle.setUserData(fadeTransition);
+        }
+    }
+
+    private void serverToggleStopAnimation() {
+        if(serverToggle.getUserData() != null) {
+            FadeTransition fadeTransition = (FadeTransition)serverToggle.getUserData();
+            fadeTransition.stop();
+            fadeTransition.getNode().setOpacity(1.0);
+            serverToggle.setUserData(null);
+        }
+    }
+
     private void tabLabelStartAnimation(Wallet wallet) {
         tabs.getTabs().stream().filter(tab -> tab.getUserData() instanceof WalletTabData && ((WalletTabData)tab.getUserData()).getWallet() == wallet).forEach(this::tabLabelStartAnimation);
     }
@@ -1340,6 +1458,8 @@ public class AppController implements Initializable {
                     saveTransaction.setVisible(false);
                 }
                 exportWallet.setDisable(true);
+                showLoadingLog.setDisable(true);
+                showUtxosChart.setDisable(true);
                 showTxHex.setDisable(false);
             } else if(event instanceof WalletTabSelectedEvent) {
                 WalletTabSelectedEvent walletTabEvent = (WalletTabSelectedEvent)event;
@@ -1347,6 +1467,8 @@ public class AppController implements Initializable {
                 saveTransaction.setVisible(true);
                 saveTransaction.setDisable(true);
                 exportWallet.setDisable(walletTabData.getWallet() == null || !walletTabData.getWallet().isValid());
+                showLoadingLog.setDisable(false);
+                showUtxosChart.setDisable(false);
                 showTxHex.setDisable(true);
             }
         }
@@ -1517,30 +1639,40 @@ public class AppController implements Initializable {
 
     @Subscribe
     public void connectionStart(ConnectionStartEvent event) {
-        statusUpdated(new StatusEvent(event.getStatus(), 120));
+        if(!statusBar.getText().contains(TRYING_ANOTHER_SERVER_MESSAGE)) {
+            statusUpdated(new StatusEvent(event.getStatus(), 120));
+        }
+        serverToggleStartAnimation();
     }
 
     @Subscribe
     public void connectionFailed(ConnectionFailedEvent event) {
         String status = CONNECTION_FAILED_PREFIX + event.getMessage();
         statusUpdated(new StatusEvent(status));
+        serverToggleStopAnimation();
     }
 
     @Subscribe
     public void connection(ConnectionEvent event) {
         String status = "Connected to " + Config.get().getServerAddress() + " at height " + event.getBlockHeight();
         statusUpdated(new StatusEvent(status));
+        setServerToggleTooltip(event.getBlockHeight());
+        serverToggleStopAnimation();
     }
 
     @Subscribe
     public void disconnection(DisconnectionEvent event) {
         serverToggle.setDisable(false);
-        if(!AppServices.isConnecting() && !AppServices.isConnected() && !statusBar.getText().startsWith(CONNECTION_FAILED_PREFIX)) {
+        if(!AppServices.isConnecting() && !AppServices.isConnected() && !statusBar.getText().startsWith(CONNECTION_FAILED_PREFIX) && !statusBar.getText().contains(TRYING_ANOTHER_SERVER_MESSAGE)) {
             statusUpdated(new StatusEvent("Disconnected"));
         }
         if(statusTimeline == null || statusTimeline.getStatus() != Animation.Status.RUNNING) {
             statusBar.setProgress(0);
         }
+        for(Wallet wallet : getOpenWallets().keySet()) {
+            tabLabelStopAnimation(wallet);
+        }
+        serverToggleStopAnimation();
     }
 
     @Subscribe
@@ -1597,6 +1729,11 @@ public class AppController implements Initializable {
     public void walletHistoryFailed(WalletHistoryFailedEvent event) {
         walletHistoryFinished(new WalletHistoryFinishedEvent(event.getWallet()));
         tabs.getTabs().stream().filter(tab -> tab.getUserData() instanceof WalletTabData && ((WalletTabData) tab.getUserData()).getWallet() == event.getWallet()).forEach(this::tabLabelAddFailure);
+        if(getOpenWallets().containsKey(event.getWallet())) {
+            if(AppServices.isConnected()) {
+                statusUpdated(new StatusEvent("Error retrieving wallet history" + (Config.get().getServerType() == ServerType.PUBLIC_ELECTRUM_SERVER ? ", " + TRYING_ANOTHER_SERVER_MESSAGE : "")));
+            }
+        }
     }
 
     @Subscribe
@@ -1723,14 +1860,22 @@ public class AppController implements Initializable {
     @Subscribe
     public void requestWalletOpen(RequestWalletOpenEvent event) {
         if(tabs.getScene().getWindow().equals(event.getWindow())) {
-            openWallet(true);
+            if(event.getFile() != null) {
+                openWalletFile(event.getFile(), true);
+            } else {
+                openWallet(true);
+            }
         }
     }
 
     @Subscribe
     public void requestTransactionOpen(RequestTransactionOpenEvent event) {
         if(tabs.getScene().getWindow().equals(event.getWindow())) {
-            openTransactionFromFile(null);
+            if(event.getFile() != null) {
+                openTransactionFile(event.getFile());
+            } else {
+                openTransactionFromFile(null);
+            }
         }
     }
 
@@ -1739,5 +1884,15 @@ public class AppController implements Initializable {
         if(tabs.getScene().getWindow().equals(event.getWindow())) {
             openTransactionFromQR(null);
         }
+    }
+
+    @Subscribe
+    public void sendAction(SendActionEvent event) {
+        selectTab(event.getWallet());
+    }
+
+    @Subscribe
+    public void recieveAction(ReceiveActionEvent event) {
+        selectTab(event.getWallet());
     }
 }

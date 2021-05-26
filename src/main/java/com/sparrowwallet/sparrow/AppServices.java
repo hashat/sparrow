@@ -4,17 +4,16 @@ import com.google.common.eventbus.Subscribe;
 import com.google.common.net.HostAndPort;
 import com.sparrowwallet.drongo.Network;
 import com.sparrowwallet.drongo.address.Address;
+import com.sparrowwallet.drongo.protocol.ScriptType;
 import com.sparrowwallet.drongo.protocol.Transaction;
 import com.sparrowwallet.drongo.psbt.PSBT;
 import com.sparrowwallet.drongo.uri.BitcoinURI;
 import com.sparrowwallet.drongo.wallet.KeystoreSource;
 import com.sparrowwallet.drongo.wallet.Wallet;
+import com.sparrowwallet.sparrow.control.TextUtils;
 import com.sparrowwallet.sparrow.control.TrayManager;
 import com.sparrowwallet.sparrow.event.*;
-import com.sparrowwallet.sparrow.io.Config;
-import com.sparrowwallet.sparrow.io.Device;
-import com.sparrowwallet.sparrow.io.Hwi;
-import com.sparrowwallet.sparrow.io.Storage;
+import com.sparrowwallet.sparrow.io.*;
 import com.sparrowwallet.sparrow.net.*;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
@@ -27,25 +26,35 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
-import javafx.scene.control.ButtonType;
+import javafx.scene.control.*;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.Label;
 import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.input.KeyCode;
 import javafx.scene.text.Font;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.util.Duration;
 import org.berndpruenster.netlayer.tor.Tor;
+import org.controlsfx.control.HyperlinkLabel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.*;
+import java.awt.desktop.OpenFilesHandler;
+import java.awt.desktop.OpenURIHandler;
 import java.io.File;
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Proxy;
+import java.net.*;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class AppServices {
@@ -58,6 +67,7 @@ public class AppServices {
     private static final int VERSION_CHECK_PERIOD_HOURS = 24;
     private static final ExchangeSource DEFAULT_EXCHANGE_SOURCE = ExchangeSource.COINGECKO;
     private static final Currency DEFAULT_FIAT_CURRENCY = Currency.getInstance("USD");
+    private static final String TOR_DEFAULT_PROXY_CIRCUIT_ID = "default";
 
     private static AppServices INSTANCE;
 
@@ -91,6 +101,10 @@ public class AppServices {
 
     private static List<Device> devices;
 
+    private static final List<File> argFiles = new ArrayList<>();
+
+    private static final List<URI> argUris = new ArrayList<>();
+
     private static final Map<Address, BitcoinURI> payjoinURIs = new HashMap<>();
 
     private final ChangeListener<Boolean> onlineServicesListener = new ChangeListener<>() {
@@ -108,6 +122,14 @@ public class AppServices {
                 versionCheckService.cancel();
             }
         }
+    };
+
+    private static final OpenURIHandler openURIHandler = event -> {
+        openURI(event.getURI());
+    };
+
+    private static final OpenFilesHandler openFilesHandler = event -> {
+        openFiles(event.getFiles(), null);
     };
 
     public AppServices(MainApp application) {
@@ -131,6 +153,8 @@ public class AppServices {
                 restartServices();
             }
         }
+
+        addURIHandlers();
     }
 
     private void restartServices() {
@@ -216,7 +240,7 @@ public class AppServices {
                 connectionService.setRestartOnFailure(false);
                 if(tlsServerException.getCause().getMessage().contains("PKIX path building failed")) {
                     File crtFile = Config.get().getElectrumServerCert();
-                    if(crtFile != null) {
+                    if(crtFile != null && Config.get().getServerType() == ServerType.ELECTRUM_SERVER) {
                         AppServices.showErrorDialog("SSL Handshake Failed", "The configured server certificate at " + crtFile.getAbsolutePath() + " did not match the certificate provided by the server at " + tlsServerException.getServer().getHost() + "." +
                                 "\n\nThis may indicate a man-in-the-middle attack!" +
                                 "\n\nChange the configured server certificate if you would like to proceed.");
@@ -247,8 +271,7 @@ public class AppServices {
             onlineProperty.addListener(onlineServicesListener);
 
             if(Config.get().getServerType() == ServerType.PUBLIC_ELECTRUM_SERVER) {
-                List<String> otherServers = Arrays.stream(PublicElectrumServer.values()).map(PublicElectrumServer::getUrl).filter(url -> !url.equals(Config.get().getPublicElectrumServer())).collect(Collectors.toList());
-                Config.get().setPublicElectrumServer(otherServers.get(new Random().nextInt(otherServers.size())));
+                Config.get().changePublicServer();
                 connectionService.setPeriod(Duration.seconds(PUBLIC_SERVER_RETRY_PERIOD_SECS));
             }
 
@@ -351,17 +374,31 @@ public class AppServices {
     }
 
     public static Proxy getProxy() {
+        return getProxy(TOR_DEFAULT_PROXY_CIRCUIT_ID);
+    }
+
+    public static Proxy getProxy(String proxyCircuitId) {
         Config config = Config.get();
+        Proxy proxy = null;
         if(config.isUseProxy()) {
-            HostAndPort proxy = HostAndPort.fromString(config.getProxyServer());
-            InetSocketAddress proxyAddress = new InetSocketAddress(proxy.getHost(), proxy.getPortOrDefault(ProxyTcpOverTlsTransport.DEFAULT_PROXY_PORT));
-            return new Proxy(Proxy.Type.SOCKS, proxyAddress);
+            HostAndPort proxyHostAndPort = HostAndPort.fromString(config.getProxyServer());
+            InetSocketAddress proxyAddress = new InetSocketAddress(proxyHostAndPort.getHost(), proxyHostAndPort.getPortOrDefault(ProxyTcpOverTlsTransport.DEFAULT_PROXY_PORT));
+            proxy = new Proxy(Proxy.Type.SOCKS, proxyAddress);
         } else if(AppServices.isTorRunning()) {
             InetSocketAddress proxyAddress = new InetSocketAddress("localhost", TorService.PROXY_PORT);
-            return new Proxy(Proxy.Type.SOCKS, proxyAddress);
+            proxy = new Proxy(Proxy.Type.SOCKS, proxyAddress);
         }
 
-        return null;
+        //Setting new proxy authentication credentials will force a new Tor circuit to be created
+        if(proxy != null) {
+            Authenticator.setDefault(new Authenticator() {
+                public PasswordAuthentication getPasswordAuthentication() {
+                    return (new PasswordAuthentication("user", proxyCircuitId.toCharArray()));
+                }
+            });
+        }
+
+        return proxy;
     }
 
     static void initialize(MainApp application) {
@@ -411,6 +448,14 @@ public class AppServices {
 
         trayManager.addStage(stage);
         stage.hide();
+    }
+
+    public static void onEscapePressed(Scene scene, Runnable runnable) {
+        scene.setOnKeyPressed(event -> {
+            if(event.getCode() == KeyCode.ESCAPE) {
+                runnable.run();
+            }
+        });
     }
 
     public Map<Wallet, Storage> getOpenWallets() {
@@ -494,6 +539,15 @@ public class AppServices {
         payjoinURIs.put(bitcoinURI.getAddress(), bitcoinURI);
     }
 
+    public static void clearTransactionHistoryCache(Wallet wallet) {
+        ElectrumServer.clearRetrievedScriptHashes(wallet);
+    }
+
+    public static boolean isWalletFile(File file) {
+        FileType fileType = IOUtils.getFileType(file);
+        return FileType.JSON.equals(fileType) || FileType.BINARY.equals(fileType);
+    }
+
     public static Optional<ButtonType> showWarningDialog(String title, String content, ButtonType... buttons) {
         return showAlertDialog(title, content, Alert.AlertType.WARNING, buttons);
     }
@@ -508,6 +562,30 @@ public class AppServices {
         alert.getDialogPane().getScene().getStylesheets().add(AppServices.class.getResource("general.css").toExternalForm());
         alert.setTitle(title);
         alert.setHeaderText(title);
+
+        Pattern linkPattern = Pattern.compile("\\[(http.+)]");
+        Matcher matcher = linkPattern.matcher(content);
+        if(matcher.find()) {
+            String link = matcher.group(1);
+            HyperlinkLabel hyperlinkLabel = new HyperlinkLabel(content);
+            hyperlinkLabel.setMaxWidth(Double.MAX_VALUE);
+            hyperlinkLabel.setMaxHeight(Double.MAX_VALUE);
+            hyperlinkLabel.getStyleClass().add("content");
+            Label label = new Label();
+            hyperlinkLabel.setPrefWidth(Math.max(360, TextUtils.computeTextWidth(label.getFont(), link, 0.0D) + 50));
+            hyperlinkLabel.setOnAction(event -> {
+                alert.close();
+                get().getApplication().getHostServices().showDocument(link);
+            });
+            alert.getDialogPane().setContent(hyperlinkLabel);
+        }
+
+        String[] lines = content.split("\r\n|\r|\n");
+        if(lines.length > 3) {
+            alert.getDialogPane().setPrefHeight(180 + lines.length * 20);
+        }
+
+        moveToActiveWindowScreen(alert);
         return alert.showAndWait();
     }
 
@@ -518,6 +596,175 @@ public class AppServices {
         if(stage.getScene() != null && Config.get().getTheme() == Theme.DARK) {
             stage.getScene().getStylesheets().add(AppServices.class.getResource("darktheme.css").toExternalForm());
         }
+    }
+
+    public static Window getActiveWindow() {
+        return Stage.getWindows().stream().filter(Window::isFocused).findFirst().orElse(get().walletWindows.keySet().iterator().hasNext() ? get().walletWindows.keySet().iterator().next() : null);
+    }
+
+    public static void moveToActiveWindowScreen(Dialog<?> dialog) {
+        Window activeWindow = getActiveWindow();
+        if(activeWindow != null) {
+            moveToWindowScreen(activeWindow, dialog);
+        }
+    }
+
+    public static void moveToActiveWindowScreen(Window newWindow, double newWindowWidth, double newWindowHeight) {
+        Window activeWindow = getActiveWindow();
+        if(activeWindow != null) {
+            moveToWindowScreen(activeWindow, newWindow, newWindowWidth, newWindowHeight);
+        }
+    }
+
+    public void moveToWalletWindowScreen(Storage storage, Dialog<?> dialog) {
+        moveToWindowScreen(getWindowForWallet(storage), dialog);
+    }
+
+    public static void moveToWindowScreen(Window currentWindow, Dialog<?> dialog) {
+        Window newWindow = dialog.getDialogPane().getScene().getWindow();
+        DialogPane dialogPane = dialog.getDialogPane();
+        double dialogWidth = dialogPane.getPrefWidth() > 0.0 ? dialogPane.getPrefWidth() : (dialogPane.getWidth() > 0.0 ? dialogPane.getWidth() : 360);
+        double dialogHeight = dialogPane.getPrefHeight() > 0.0 ? dialogPane.getPrefHeight() : (dialogPane.getHeight() > 0.0 ? dialogPane.getHeight() : 200);
+        moveToWindowScreen(currentWindow, newWindow, dialogWidth, dialogHeight);
+    }
+
+    public static void moveToWindowScreen(Window currentWindow, Window newWindow, double newWindowWidth, double newWindowHeight) {
+        Screen currentScreen = Screen.getScreens().stream().filter(screen -> screen.getVisualBounds().contains(currentWindow.getX(), currentWindow.getY())).findFirst().orElse(null);
+        if(currentScreen != null && !Screen.getPrimary().getVisualBounds().contains(currentWindow.getX(), currentWindow.getY()) && !currentScreen.getVisualBounds().contains(newWindow.getX(), newWindow.getY())) {
+            double x = currentWindow.getX() + (currentWindow.getWidth() / 2) - (newWindowWidth / 2);
+            double y = currentWindow.getY() + (currentWindow.getHeight() / 2.2) - (newWindowHeight / 2);
+            newWindow.setX(x);
+            newWindow.setY(y);
+        }
+    }
+
+    static void parseFileUriArguments(List<String> fileUriArguments) {
+        for(String fileUri : fileUriArguments) {
+            try {
+                File file = new File(fileUri.replace("~", System.getProperty("user.home")));
+                if(file.exists()) {
+                    argFiles.add(file);
+                    continue;
+                }
+                URI uri = new URI(fileUri);
+                argUris.add(uri);
+            } catch(URISyntaxException e) {
+                log.warn("Could not parse " + fileUri + " as a valid file or URI");
+            } catch(Exception e) {
+                //ignore
+            }
+        }
+    }
+
+    public static void openFileUriArguments(Window window) {
+        openFiles(argFiles, window);
+        argFiles.clear();
+
+        for(URI argUri : argUris) {
+            openURI(argUri);
+        }
+        argUris.clear();
+    }
+
+    private static void openFiles(List<File> files, Window window) {
+        final List<File> openFiles = new ArrayList<>(files);
+        Platform.runLater(() -> {
+            Window openWindow = window;
+            if(openWindow == null) {
+                openWindow = getActiveWindow();
+            }
+
+            if(openWindow instanceof Stage) {
+                ((Stage)openWindow).setAlwaysOnTop(true);
+                ((Stage)openWindow).setAlwaysOnTop(false);
+            }
+
+            for(File file : openFiles) {
+                if(isWalletFile(file)) {
+                    EventManager.get().post(new RequestWalletOpenEvent(openWindow, file));
+                } else {
+                    EventManager.get().post(new RequestTransactionOpenEvent(openWindow, file));
+                }
+            }
+        });
+    }
+
+    private static void openURI(URI uri) {
+        Platform.runLater(() -> {
+            if("bitcoin".equals(uri.getScheme())) {
+                openBitcoinUri(uri);
+            } else if("aopp".equals(uri.getScheme())) {
+                openAddressOwnershipProof(uri);
+            }
+        });
+    }
+
+    public static void addURIHandlers() {
+        try {
+            if(Desktop.isDesktopSupported()) {
+                if(Desktop.getDesktop().isSupported(Desktop.Action.APP_OPEN_FILE)) {
+                    Desktop.getDesktop().setOpenFileHandler(openFilesHandler);
+                }
+                if(Desktop.getDesktop().isSupported(Desktop.Action.APP_OPEN_URI)) {
+                    Desktop.getDesktop().setOpenURIHandler(openURIHandler);
+                }
+            }
+        } catch(Exception e) {
+            log.error("Could not add URI handler", e);
+        }
+    }
+
+    private static void openBitcoinUri(URI uri) {
+        try {
+            BitcoinURI bitcoinURI = new BitcoinURI(uri.toString());
+            Wallet wallet = selectWallet(null, "pay from");
+
+            if(wallet != null) {
+                final Wallet sendingWallet = wallet;
+                EventManager.get().post(new SendActionEvent(sendingWallet, new ArrayList<>(sendingWallet.getWalletUtxos().keySet())));
+                Platform.runLater(() -> EventManager.get().post(new SendPaymentsEvent(sendingWallet, List.of(bitcoinURI.toPayment()))));
+            }
+        } catch(Exception e) {
+            showErrorDialog("Not a valid bitcoin URI", e.getMessage());
+        }
+    }
+
+    public static void openAddressOwnershipProof(URI uri) {
+        try {
+            Aopp aopp = new Aopp(uri);
+            Wallet wallet = selectWallet(aopp.getScriptType(), "send proof of address");
+
+            if(wallet != null) {
+                EventManager.get().post(new ReceiveActionEvent(wallet));
+                Platform.runLater(() -> EventManager.get().post(new ReceiveProofEvent(wallet, aopp)));
+            }
+        } catch(Exception e) {
+            showErrorDialog("Not a valid AOPP URI", e.getMessage());
+        }
+    }
+
+    private static Wallet selectWallet(ScriptType scriptType, String actionDescription) {
+        Wallet wallet = null;
+        List<Wallet> wallets = get().getOpenWallets().keySet().stream().filter(w -> scriptType == null || w.getScriptType() == scriptType).collect(Collectors.toList());
+        if(wallets.isEmpty()) {
+            showErrorDialog("No wallet available", "Open a" + (scriptType == null ? "" : " " + scriptType.getDescription()) + " wallet to " + actionDescription + ".");
+        } else if(wallets.size() == 1) {
+            wallet = wallets.iterator().next();
+        } else {
+            ChoiceDialog<Wallet> walletChoiceDialog = new ChoiceDialog<>(wallets.iterator().next(), wallets);
+            walletChoiceDialog.setTitle("Choose Wallet");
+            walletChoiceDialog.setHeaderText("Choose a wallet to " + actionDescription);
+            Image image = new Image("/image/sparrow-small.png");
+            walletChoiceDialog.getDialogPane().setGraphic(new ImageView(image));
+            setStageIcon(walletChoiceDialog.getDialogPane().getScene().getWindow());
+            moveToActiveWindowScreen(walletChoiceDialog);
+            Optional<Wallet> optWallet = walletChoiceDialog.showAndWait();
+            if(optWallet.isPresent()) {
+                wallet = optWallet.get();
+            }
+        }
+
+        return wallet;
     }
 
     public static Font getMonospaceFont() {
@@ -599,7 +846,7 @@ public class AppServices {
 
         Platform.runLater(() -> {
             if(!Window.getWindows().isEmpty()) {
-                List<File> walletFiles = allWallets.stream().map(walletTabData -> walletTabData.getStorage().getWalletFile()).collect(Collectors.toList());
+                List<File> walletFiles = allWallets.stream().filter(walletTabData -> walletTabData.getWallet().getMasterWallet() == null).map(walletTabData -> walletTabData.getStorage().getWalletFile()).collect(Collectors.toList());
                 Config.get().setRecentWalletFiles(Config.get().isLoadRecentWallets() ? walletFiles : Collections.emptyList());
             }
         });
@@ -614,6 +861,10 @@ public class AppServices {
 
                 if(deviceEnumerateService == null) {
                     deviceEnumerateService = createDeviceEnumerateService();
+                }
+
+                if(deviceEnumerateService.isRunning()) {
+                    deviceEnumerateService.cancel();
                 }
 
                 if(deviceEnumerateService.getState() == Worker.State.CANCELLED) {
@@ -665,6 +916,16 @@ public class AppServices {
         if(onlineProperty().get() && !connectionService.isRunning()) {
             connectionService.reset();
             connectionService.start();
+        }
+    }
+
+    @Subscribe
+    public void walletHistoryFailed(WalletHistoryFailedEvent event) {
+        if(Config.get().getServerType() == ServerType.PUBLIC_ELECTRUM_SERVER && isConnected()) {
+            onlineProperty.set(false);
+            log.info("Failed to fetch wallet history from " + Config.get().getServerAddress() + ", reconnecting to another server...");
+            Config.get().changePublicServer();
+            onlineProperty.set(true);
         }
     }
 }
